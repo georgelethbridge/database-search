@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Database Search Admin</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 16px; }
+    input, select { padding: 6px; margin: 4px 0; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
+    th { background: #f5f5f5; text-align: left; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .row > div { min-width: 220px; }
+    .muted { color: #666; font-size: 12px; }
+    button { padding: 8px 12px; margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Database Search Admin</h2>
+
+  <div id="authSection">
+    <h3>Sign in</h3>
+    <div class="row">
+      <div>
+        <div>Email</div>
+        <input id="email" type="email" placeholder="you@example.com" />
+      </div>
+      <div>
+        <div>Password</div>
+        <input id="password" type="password" />
+      </div>
+    </div>
+    <button id="signInBtn">Sign in</button>
+    <div id="authMsg" class="muted"></div>
+  </div>
+
+  <div id="appSection" style="display:none;">
+    <div class="row">
+      <button id="refreshBtn">Refresh</button>
+      <button id="addRowBtn">Add row</button>
+      <button id="signOutBtn">Sign out</button>
+    </div>
+
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th>Territory</th>
+          <th>Link</th>
+          <th>Required number</th>
+          <th>Format</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div id="msg" class="muted"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = "https://xgbdcwxlpzjggxobcqfr.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_dr_BwE5yA1hXAI7WBO3-wA_yqD_bZmm";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const authSection = document.getElementById("authSection");
+    const appSection = document.getElementById("appSection");
+    const authMsg = document.getElementById("authMsg");
+    const msg = document.getElementById("msg");
+    const tbody = document.querySelector("#tbl tbody");
+
+    function setMsg(el, text) { el.textContent = text || ""; }
+
+    async function render() {
+      tbody.innerHTML = "";
+      setMsg(msg, "Loading...");
+
+      const { data, error } = await supabaseClient
+        .from("territory_links")
+        .select("territory_code, link, required_number, format")
+        .order("territory_code", { ascending: true });
+
+      if (error) {
+        setMsg(msg, "Error loading: " + error.message);
+        return;
+      }
+
+      for (const row of data) {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+          <td><input value="${row.territory_code ?? ""}" data-k="territory_code" style="width:90px" /></td>
+          <td><input value="${row.link ?? ""}" data-k="link" style="width:100%" /></td>
+          <td>
+            <select data-k="required_number">
+              <option value=""></option>
+              <option value="EP Publication Number">EP Publication Number</option>
+              <option value="EP Application Number">EP Application Number</option>
+            </select>
+          </td>
+          <td><input value="${row.format ?? ""}" data-k="format" style="width:160px" /></td>
+          <td>
+            <button data-act="save">Save</button>
+            <button data-act="delete">Delete</button>
+          </td>
+        `;
+
+        tr.querySelector('select[data-k="required_number"]').value = row.required_number ?? "";
+
+        tr.querySelector('button[data-act="save"]').addEventListener("click", async () => {
+          const inputs = tr.querySelectorAll("input,select");
+          const rec = {};
+          for (const el of inputs) rec[el.dataset.k] = el.value.trim();
+
+          // Normalize
+          rec.territory_code = rec.territory_code.toUpperCase();
+          rec.required_number = rec.required_number || null;
+          rec.format = rec.format || null;
+          rec.link = rec.link || null;
+
+          if (!rec.territory_code) return setMsg(msg, "Territory code required.");
+
+          setMsg(msg, "Saving...");
+          const { error } = await supabaseClient
+            .from("territory_links")
+            .upsert(rec, { onConflict: "territory_code" });
+
+          setMsg(msg, error ? ("Save error: " + error.message) : "Saved.");
+          if (!error) await render();
+        });
+
+        tr.querySelector('button[data-act="delete"]').addEventListener("click", async () => {
+          const code = tr.querySelector('input[data-k="territory_code"]').value.trim().toUpperCase();
+          if (!code) return;
+          if (!confirm("Delete " + code + "?")) return;
+
+          setMsg(msg, "Deleting...");
+          const { error } = await supabaseClient
+            .from("territory_links")
+            .delete()
+            .eq("territory_code", code);
+
+          setMsg(msg, error ? ("Delete error: " + error.message) : "Deleted.");
+          if (!error) await render();
+        });
+
+        tbody.appendChild(tr);
+      }
+
+      setMsg(msg, data.length ? "" : "No rows yet.");
+    }
+
+    async function checkSession() {
+      const { data } = await supabaseClient.auth.getSession();
+      const session = data.session;
+      if (session) {
+        authSection.style.display = "none";
+        appSection.style.display = "block";
+        await render();
+      } else {
+        authSection.style.display = "block";
+        appSection.style.display = "none";
+      }
+    }
+
+    document.getElementById("signInBtn").addEventListener("click", async () => {
+      setMsg(authMsg, "Signing in...");
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      setMsg(authMsg, error ? error.message : "Signed in.");
+      await checkSession();
+    });
+
+    document.getElementById("signOutBtn").addEventListener("click", async () => {
+      await supabaseClient.auth.signOut();
+      await checkSession();
+    });
+
+    document.getElementById("refreshBtn").addEventListener("click", render);
+
+    document.getElementById("addRowBtn").addEventListener("click", () => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><input value="" data-k="territory_code" style="width:90px" placeholder="GB" /></td>
+        <td><input value="" data-k="link" style="width:100%" placeholder="https://...%s" /></td>
+        <td>
+          <select data-k="required_number">
+            <option value=""></option>
+            <option value="EP Publication Number">EP Publication Number</option>
+            <option value="EP Application Number">EP Application Number</option>
+          </select>
+        </td>
+        <td><input value="" data-k="format" style="width:160px" placeholder="EPXXXXXXX" /></td>
+        <td><button data-act="save">Save</button></td>
+      `;
+      tbody.prepend(tr);
+      tr.querySelector('button[data-act="save"]').addEventListener("click", async () => {
+        const inputs = tr.querySelectorAll("input,select");
+        const rec = {};
+        for (const el of inputs) rec[el.dataset.k] = el.value.trim();
+
+        rec.territory_code = rec.territory_code.toUpperCase();
+        rec.required_number = rec.required_number || null;
+        rec.format = rec.format || null;
+        rec.link = rec.link || null;
+
+        if (!rec.territory_code) return setMsg(msg, "Territory code required.");
+
+        setMsg(msg, "Saving...");
+        const { error } = await supabaseClient
+          .from("territory_links")
+          .upsert(rec, { onConflict: "territory_code" });
+
+        setMsg(msg, error ? ("Save error: " + error.message) : "Saved.");
+        if (!error) await render();
+      });
+    });
+
+    checkSession();
+  </script>
+</body>
+</html>

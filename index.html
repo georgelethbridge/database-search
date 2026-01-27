@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>EP Territory Search Tool</title>
+    <style>
+      body {
+        /*background-color: #f9f9f9;*/
+      }
+      label {
+        display: inline-block;
+        font-weight: bold;
+        padding-top: 3px;
+        padding-bottom: 3px;
+      }
+      #epPublicationNumber {
+        width: 80px;
+      }
+      #territoryCode {
+        width: 140px;
+      }
+      #importedApplicationNumberSection {
+        display: flex;
+        align-items: center;
+      }
+      #importedApplicationNumber {
+        width: 80px;
+        height: 15px;
+        resize: none;
+        overflow: hidden;
+        margin-left: 5px;
+      }
+      #myIframe {
+        width: 100%;
+        height: 100%;
+      }
+      #inputtedInformation {
+        border: 2px solid #000000;
+        padding: 5px;
+      }
+      #alertsContainer {
+        display: none;
+        font-weight: bold;
+        border: 2px solid #000000;
+        padding: 5px;
+        background-color: #ffc47d;
+      }
+      #territoryLinksContainer {
+        border: 2px solid #000000;
+        padding: 5px;
+        display: none;
+      }
+    </style>
+</head>
+<body>
+  <div id="inputtedInformation">
+    <section>
+      <label for="epPublicationNumber">EP Publication Number:</label>
+      <input type="text" id="epPublicationNumber" placeholder="EPXXXXXXX">
+      <button onclick="generateLinks()">Generate Links</button>
+      <br>
+      <label for="territoryCode">Territory Code:</label>
+      <input type="text" id="territoryCode" placeholder="XX">
+      <button onclick="generateSpecificLink()">Generate Specific Link</button>
+      <div id="importedApplicationNumberSection">
+        <label for="importedApplicationNumber">Imported EP Application Number:</label>
+        <textarea id="importedApplicationNumber" readonly placeholder="XXXXXXXX.Y"></textarea>
+      </div>
+    </section>
+  </div>
+  <div id="territoryLinksContainer">
+    <section id="linksContainer"></section>
+    <section id="noLinksContainer"></section>
+  </div>
+  <div id="alertsContainer">
+    <section id="alertsSection"></section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const alertsContainer = document.getElementById("alertsContainer");
+    const alertsSection = document.getElementById("alertsSection");
+    const linksContainer = document.getElementById("linksContainer");
+    const territoryLinksContainer = document.getElementById("territoryLinksContainer");
+    const noLinksContainer = document.getElementById("noLinksContainer");
+    const importedApplicationNumber = document.getElementById("importedApplicationNumber");
+    const epPublicationNumber = document.getElementById("epPublicationNumber");
+    const territoryCodeInput = document.getElementById("territoryCode");
+    const alert1 = "<strong style='font-size: 25px; color: red;'>An error occurred!</strong> <br><br>" +
+      "This might have happened because:<br><br>" +
+      "&#8226; The provided EP Publication Number is invalid. Ensure the \"EP\" prefix was provided.<br>" +
+      "&#8226; The provided EP Publication Number relates to an ungranted or recently granted case.<br>" +
+      "&#8226; There was an error contacting the EPO API.<br><br>" +
+      "If none of the above apply, please shout.";
+
+    function errorCallback(error) {
+      importedApplicationNumber.value = "Error!";
+      console.error(error);
+      alertsSection.innerHTML = alert1.replace(/\n/g, "<br>");
+      alertsContainer.style.display = "block";
+    }
+
+    function getQueryParameter() {
+      var regex = /\?(.+)/;
+      var results = regex.exec(location.search);
+      return results === null ? null : decodeURIComponent(results[1].replace(/\+/g, " "));
+    }
+
+    function prefillInputBoxes() {
+      var rawQuery = getQueryParameter();
+      if (rawQuery === null) {
+        epPublicationNumber.value = null;
+        territoryCodeInput.value = null;
+      } else {
+        var query = rawQuery.toUpperCase();
+        var territoryCode = query.substring(0, 2);
+        if (territoryCode in territoryLinks) {
+          if (query.substring(2, 4) === "EP") {
+            territoryCodeInput.value = territoryCode;
+            epPublicationNumber.value = query.substring(2);
+            generateSpecificLink();
+          } else {
+            territoryCodeInput.value = "";
+            epPublicationNumber.value = query.substring();
+            generateLinks();
+          }
+        } else {
+          errorCallback("Invalid query");
+        }
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", async () => {
+      const ok = await loadTerritoryLinksFromSupabase();
+      if (!ok) {
+        alertsSection.innerHTML = "<strong style='font-size: 20px; color: red;'>Config load failed</strong><br><br>" +
+          "Could not load territory links from Supabase. Check SUPABASE_URL / SUPABASE_ANON_KEY and that your RLS policies allow SELECT.";
+        alertsContainer.style.display = "block";
+        return;
+      }
+      prefillInputBoxes();
+    });
+
+    
+    // ---------------------------
+    // Supabase configuration
+    // ---------------------------
+    // TODO: Replace these two values with your Supabase project settings:
+    // 1) Supabase Dashboard → Settings → API → Project URL
+    // 2) Supabase Dashboard → Settings → API → anon public key
+    const SUPABASE_URL = "https://xgbdcwxlpzjggxobcqfr.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_dr_BwE5yA1hXAI7WBO3-wA_yqD_bZmm";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Territory link configuration is loaded from Supabase table: public.territory_links
+    // Expected columns:
+    // - territory_code (text, primary key)
+    // - link (text)
+    // - required_number (text, nullable) values: "EP Publication Number" | "EP Application Number" | null
+    // - format (text, nullable) values like "EPXXXXXXX", "EXXXXXXXXY", etc.
+    let territoryLinks = {};
+
+    async function loadTerritoryLinksFromSupabase() {
+      const { data, error } = await supabaseClient
+        .from("territory_links")
+        .select("territory_code, link, required_number, format");
+
+      if (error) {
+        console.error("Failed to load territory links from Supabase:", error);
+        return false;
+      }
+
+      territoryLinks = {};
+      for (const row of data ?? []) {
+        const code = (row.territory_code || "").toUpperCase().trim();
+        if (!code) continue;
+
+        territoryLinks[code] = {
+          link: row.link ?? null,
+          requiredNumber: row.required_number ?? null,
+          format: row.format ?? null
+        };
+      }
+      return true;
+    }
+
+
+    // Application number formats
+    function EPXXXXXXXX_Y(applicationNumber) {
+      var formattedNumber = "EP" + applicationNumber;
+      return formattedNumber;
+    }
+    function XXXXXXXX_Y(applicationNumber) {
+      var formattedNumber = applicationNumber;
+      return formattedNumber;
+    }
+    function XXXXXXXXY(applicationNumber) {
+      var formattedNumber = applicationNumber.replace(".", "");
+      return formattedNumber;
+    }
+    function EPXXXXXXXX(applicationNumber) {
+      var decimalIndex = applicationNumber.indexOf(".");
+      var formattedNumber = decimalIndex !== -1 ? applicationNumber.substring(0, decimalIndex) : applicationNumber;
+      formattedNumber = "EP" + formattedNumber;
+      return formattedNumber;
+    }
+    function EXXXXXXXX(applicationNumber) {
+      var decimalIndex = applicationNumber.indexOf(".");
+      var formattedNumber = decimalIndex !== -1 ? applicationNumber.substring(0, decimalIndex) : applicationNumber;
+      formattedNumber = "E" + formattedNumber;
+      return formattedNumber;
+    }
+    function EXXXXXXXXY(applicationNumber) {
+      var formattedNumber = "E" + applicationNumber.replace(".", "");
+      return formattedNumber;
+    }
+
+    // Publication number formats
+    function XXXXXXX(publicationNumber) {
+      var formattedNumber = publicationNumber.substring(2);
+      return formattedNumber;
+    }
+    function EPXXXXXXX(publicationNumber) {
+      var formattedNumber = publicationNumber;
+      return formattedNumber;
+    }
+
+    function generateFormattedNumber(format, number) {
+      var formattingFunction = window[format];
+      if (typeof formattingFunction === 'function') {
+        return formattingFunction(number);
+      } else {
+        return number;
+      }
+    }
+
+    function openLink(link) {
+      window.open(link, "_blank", "noopener,noreferrer");
+    }
+
+    function fetchXmlData(epPublicationNumber, successCallback, errorCallback) {
+
+      var EPOXMLLink = "https://corsproxy.io/?https://data.epo.org/publication-server/rest/v1.2/patents/EP"+ (epPublicationNumber.value.startsWith("EP") || epPublicationNumber.value.startsWith("ep") ? epPublicationNumber.value.substring(2) : epPublicationNumber.value) + "NWB1/document.xml";
+
+      fetch(EPOXMLLink)
+        .then(response => response.text())
+        .then(data => {
+          successCallback(data);
+        })
+        .catch(error => {
+          errorCallback(error);
+        });
+    }
+
+    function sharedcode1() {
+      linksContainer.innerHTML = "";
+      noLinksContainer.innerHTML = "";
+      importedApplicationNumber.value = "Loading...";
+      alertsContainer.style.display = "none";
+      territoryLinksContainer.style.display = "none";
+    }
+
+    function sharedcode2(data) {
+      parser = new DOMParser();
+      xmlDoc = parser.parseFromString(data, "text/xml");
+      b210Value = xmlDoc.querySelector("B210").textContent;
+      importedApplicationNumber.value = b210Value;
+      territoryLinksContainer.style.display = "block";
+    }
+
+    function generateSpecificLink() {
+      sharedcode1();
+
+      function successCallback(data) {
+        sharedcode2(data);
+
+        var territory = territoryLinks[territoryCodeInput.value.toUpperCase()];
+        if (territory) {
+          var queryLink = territory.link;
+          var requiredNumber = territory.requiredNumber;
+          var format = territory.format;
+
+          var formattedNumber = "";
+
+          if (requiredNumber === "EP Publication Number") {
+            if (format) {
+              formattedNumber = generateFormattedNumber(format, epPublicationNumber.value);
+            }
+          } else if (requiredNumber === "EP Application Number") {
+            if (format) {
+              formattedNumber = generateFormattedNumber(format, b210Value);
+            }
+          }
+
+          var finalLink = queryLink;
+          if (formattedNumber) {
+            finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
+          }
+
+          var linkElement;
+          if (queryLink !== null) {
+            linkElement = document.createElement("a");
+            linkElement.href = finalLink;
+            linkElement.target = "_blank";
+            linkElement.textContent = territoryCodeInput.value.toUpperCase() + ": " + finalLink;
+            openLink(finalLink); // Open the link automatically
+          } else {
+            linkElement = document.createElement("span");
+            linkElement.textContent = territoryCodeInput.value.toUpperCase() + ": " + finalLink;
+          }
+
+          linksContainer.appendChild(linkElement);
+        } else {
+          var errorMessage = document.createElement("span");
+          errorMessage.textContent = "Invalid territory code: " + territoryCodeInput.value.toUpperCase();
+          linksContainer.appendChild(errorMessage);
+        }
+      }
+      fetchXmlData(epPublicationNumber, successCallback, errorCallback);
+    }
+
+    function generateLinks() {
+      sharedcode1();
+
+      function successCallback(data) {
+        sharedcode2(data);
+
+        for (var territoryCode in territoryLinks) {
+          var territory = territoryLinks[territoryCode];
+          var queryLink = territory.link;
+          var requiredNumber = territory.requiredNumber;
+          var format = territory.format;
+
+          var formattedNumber = "";
+
+          if (requiredNumber === "EP Publication Number") {
+            if (format) {
+              formattedNumber = generateFormattedNumber(format, epPublicationNumber.value);
+            }
+          } else if (requiredNumber === "EP Application Number") {
+            if (format) {
+              formattedNumber = generateFormattedNumber(format, b210Value);
+            }
+          }
+
+          var finalLink = queryLink;
+          if (formattedNumber) {
+            finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
+          }
+
+          if (queryLink !== null) {
+            var linkElement = document.createElement("a");
+            linkElement.href = finalLink;
+            linkElement.target = "_blank";
+            linkElement.textContent = territoryCode + ": " + finalLink;
+            linksContainer.appendChild(linkElement);
+            linksContainer.appendChild(document.createElement("br"));
+          } else {
+            var noLinksElement = document.createElement("div");
+            noLinksElement.textContent = territoryCode + ": No link";
+            noLinksContainer.appendChild(noLinksElement);
+          }
+        }
+      }
+      fetchXmlData(epPublicationNumber, successCallback, errorCallback);
+    }
+  </script>
+<!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "d3459c9ad4e940a4a9c8894296ef7803"}'></script><!-- Cloudflare Pages Analytics --></body>
+</html>
