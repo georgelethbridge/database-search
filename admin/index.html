@@ -1,67 +1,111 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Database Search Admin</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 16px; }
-    input, select { padding: 6px; margin: 4px 0; }
-    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-    th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
-    th { background: #f5f5f5; text-align: left; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; }
-    .row > div { min-width: 220px; }
-    .muted { color: #666; font-size: 12px; }
-    button { padding: 8px 12px; margin-right: 8px; }
-  </style>
+  <link rel="stylesheet" href="../styles.css" />
 </head>
 <body>
-  <h2>Database Search Admin</h2>
-
-  <div id="authSection">
-    <button id="signInBtn">Sign in with Google</button>
-  </div>
-
-  <div id="appSection" style="display:none;">
-    <div class="row">
-      <button id="refreshBtn">Refresh</button>
-      <button id="addRowBtn">Add row</button>
-      <button id="signOutBtn">Sign out</button>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <h1>Database Search</h1>
+          <p>Admin</p>
+        </div>
+      </div>
+      <div class="pill">
+        <span>Table</span>
+        <span class="kbd">territory_links</span>
+      </div>
     </div>
 
-    <table id="tbl">
-      <thead>
-        <tr>
-          <th>Territory</th>
-          <th>Link</th>
-          <th>Required number</th>
-          <th>Format</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <div class="grid">
+      <div class="card" id="authCard">
+        <div class="card-header">
+          <div>
+            <h2>Sign in</h2>
+            <div class="hint">Use Google sign-in to manage territory link templates.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-row">
+            <button class="btn" id="signInBtn" type="button">Sign in with Google</button>
+            <div class="muted" id="authMsg"></div>
+          </div>
+          <div style="height:10px;"></div>
+          <div class="muted">
+            If sign-in loops, check Supabase <span class="kbd">URL Configuration</span> redirect URLs.
+          </div>
+        </div>
+      </div>
 
-    <div id="msg" class="muted"></div>
+      <div class="card" id="appCard" style="display:none;">
+        <div class="card-header">
+          <div>
+            <h2>Territory links</h2>
+            <div class="hint">Edit rows and press Save. Territory code is the primary key.</div>
+          </div>
+          <div class="actions">
+            <button class="btn secondary" id="refreshBtn" type="button">Refresh</button>
+            <button class="btn secondary" id="addRowBtn" type="button">Add row</button>
+            <button class="btn danger" id="signOutBtn" type="button">Sign out</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="banner" id="banner" role="alert"></div>
+
+          <div class="table-wrap" style="margin-top:12px;">
+            <table id="tbl">
+              <thead>
+                <tr>
+                  <th style="width:120px;">Territory</th>
+                  <th>Link template</th>
+                  <th style="width:220px;">Required number</th>
+                  <th style="width:180px;">Format</th>
+                  <th style="width:220px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="muted" id="msg" style="margin-top:10px;"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
+    // ---------------------------
+    // Supabase configuration
+    // ---------------------------
+    // TODO: Replace these with your Supabase project settings:
+    // Supabase Dashboard -> Settings -> Data API -> Project URL
+    // Supabase Dashboard -> Settings -> API Keys -> Publishable key
     const SUPABASE_URL = "https://xgbdcwxlpzjggxobcqfr.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_dr_BwE5yA1hXAI7WBO3-wA_yqD_bZmm";
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const authSection = document.getElementById("authSection");
-    const appSection = document.getElementById("appSection");
+    const authCard = document.getElementById("authCard");
+    const appCard = document.getElementById("appCard");
     const authMsg = document.getElementById("authMsg");
+
+    const banner = document.getElementById("banner");
     const msg = document.getElementById("msg");
     const tbody = document.querySelector("#tbl tbody");
 
-    function setMsg(el, text) { el.textContent = text || ""; }
+    function showBanner(html) { banner.innerHTML = html; banner.classList.add("show"); }
+    function clearBanner() { banner.classList.remove("show"); banner.innerHTML = ""; }
+    function setMsg(text) { msg.textContent = text || ""; }
 
     async function render() {
+      clearBanner();
       tbody.innerHTML = "";
-      setMsg(msg, "Loading...");
+      setMsg("Loading...");
 
       const { data, error } = await supabaseClient
         .from("territory_links")
@@ -69,16 +113,16 @@
         .order("territory_code", { ascending: true });
 
       if (error) {
-        setMsg(msg, "Error loading: " + error.message);
+        setMsg("");
+        showBanner("<strong>Could not load data</strong><div class='muted'>" + error.message + "</div>");
         return;
       }
 
-      for (const row of data) {
+      for (const row of (data ?? [])) {
         const tr = document.createElement("tr");
-
         tr.innerHTML = `
-          <td><input value="${row.territory_code ?? ""}" data-k="territory_code" style="width:90px" /></td>
-          <td><input value="${row.link ?? ""}" data-k="link" style="width:100%" /></td>
+          <td><input value="${(row.territory_code ?? "")}" data-k="territory_code" style="width:100px" /></td>
+          <td><input value="${(row.link ?? "")}" data-k="link" placeholder="https://...%s" /></td>
           <td>
             <select data-k="required_number">
               <option value=""></option>
@@ -86,80 +130,90 @@
               <option value="EP Application Number">EP Application Number</option>
             </select>
           </td>
-          <td><input value="${row.format ?? ""}" data-k="format" style="width:160px" /></td>
+          <td><input value="${(row.format ?? "")}" data-k="format" placeholder="EPXXXXXXX" style="width:160px" /></td>
           <td>
-            <button data-act="save">Save</button>
-            <button data-act="delete">Delete</button>
+            <div class="actions">
+              <button class="btn secondary" data-act="save" type="button">Save</button>
+              <button class="btn danger" data-act="delete" type="button">Delete</button>
+            </div>
           </td>
         `;
 
         tr.querySelector('select[data-k="required_number"]').value = row.required_number ?? "";
 
         tr.querySelector('button[data-act="save"]').addEventListener("click", async () => {
+          clearBanner();
           const inputs = tr.querySelectorAll("input,select");
           const rec = {};
           for (const el of inputs) rec[el.dataset.k] = el.value.trim();
 
-          // Normalize
-          rec.territory_code = rec.territory_code.toUpperCase();
+          rec.territory_code = (rec.territory_code || "").toUpperCase();
           rec.required_number = rec.required_number || null;
           rec.format = rec.format || null;
           rec.link = rec.link || null;
 
-          if (!rec.territory_code) return setMsg(msg, "Territory code required.");
+          if (!rec.territory_code) return showBanner("<strong>Territory code required</strong>");
 
-          setMsg(msg, "Saving...");
-          const { error } = await supabaseClient
-            .from("territory_links")
-            .upsert(rec, { onConflict: "territory_code" });
+          setMsg("Saving...");
+          const { error } = await supabaseClient.from("territory_links").upsert(rec, { onConflict: "territory_code" });
 
-          setMsg(msg, error ? ("Save error: " + error.message) : "Saved.");
-          if (!error) await render();
+          if (error) {
+            setMsg("");
+            return showBanner("<strong>Save failed</strong><div class='muted'>" + error.message + "</div>");
+          }
+
+          setMsg("Saved.");
+          await render();
         });
 
         tr.querySelector('button[data-act="delete"]').addEventListener("click", async () => {
-          const code = tr.querySelector('input[data-k="territory_code"]').value.trim().toUpperCase();
+          clearBanner();
+          const code = (tr.querySelector('input[data-k="territory_code"]').value || "").trim().toUpperCase();
           if (!code) return;
           if (!confirm("Delete " + code + "?")) return;
 
-          setMsg(msg, "Deleting...");
-          const { error } = await supabaseClient
-            .from("territory_links")
-            .delete()
-            .eq("territory_code", code);
+          setMsg("Deleting...");
+          const { error } = await supabaseClient.from("territory_links").delete().eq("territory_code", code);
 
-          setMsg(msg, error ? ("Delete error: " + error.message) : "Deleted.");
-          if (!error) await render();
+          if (error) {
+            setMsg("");
+            return showBanner("<strong>Delete failed</strong><div class='muted'>" + error.message + "</div>");
+          }
+
+          setMsg("Deleted.");
+          await render();
         });
 
         tbody.appendChild(tr);
       }
 
-      setMsg(msg, data.length ? "" : "No rows yet.");
+      setMsg((data ?? []).length ? "" : "No rows yet.");
     }
 
     async function checkSession() {
       const { data } = await supabaseClient.auth.getSession();
       const session = data.session;
+
       if (session) {
-        authSection.style.display = "none";
-        appSection.style.display = "block";
+        authCard.style.display = "none";
+        appCard.style.display = "block";
         await render();
       } else {
-        authSection.style.display = "block";
-        appSection.style.display = "none";
+        authCard.style.display = "block";
+        appCard.style.display = "none";
       }
     }
 
     document.getElementById("signInBtn").addEventListener("click", async () => {
+      authMsg.textContent = "Opening Google sign-in...";
       await supabaseClient.auth.signInWithOAuth({
         provider: "google",
         options: {
+          // TODO: update if you change domain/path
           redirectTo: "https://www.georgelethbridge.com/database-search/admin/"
         }
       });
     });
-
 
     document.getElementById("signOutBtn").addEventListener("click", async () => {
       await supabaseClient.auth.signOut();
@@ -169,10 +223,11 @@
     document.getElementById("refreshBtn").addEventListener("click", render);
 
     document.getElementById("addRowBtn").addEventListener("click", () => {
+      clearBanner();
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><input value="" data-k="territory_code" style="width:90px" placeholder="GB" /></td>
-        <td><input value="" data-k="link" style="width:100%" placeholder="https://...%s" /></td>
+        <td><input value="" data-k="territory_code" placeholder="DE" style="width:100px" /></td>
+        <td><input value="" data-k="link" placeholder="https://...%s" /></td>
         <td>
           <select data-k="required_number">
             <option value=""></option>
@@ -180,29 +235,38 @@
             <option value="EP Application Number">EP Application Number</option>
           </select>
         </td>
-        <td><input value="" data-k="format" style="width:160px" placeholder="EPXXXXXXX" /></td>
-        <td><button data-act="save">Save</button></td>
+        <td><input value="" data-k="format" placeholder="EPXXXXXXX" style="width:160px" /></td>
+        <td>
+          <div class="actions">
+            <button class="btn secondary" data-act="save" type="button">Save</button>
+          </div>
+        </td>
       `;
       tbody.prepend(tr);
+
       tr.querySelector('button[data-act="save"]').addEventListener("click", async () => {
+        clearBanner();
         const inputs = tr.querySelectorAll("input,select");
         const rec = {};
         for (const el of inputs) rec[el.dataset.k] = el.value.trim();
 
-        rec.territory_code = rec.territory_code.toUpperCase();
+        rec.territory_code = (rec.territory_code || "").toUpperCase();
         rec.required_number = rec.required_number || null;
         rec.format = rec.format || null;
         rec.link = rec.link || null;
 
-        if (!rec.territory_code) return setMsg(msg, "Territory code required.");
+        if (!rec.territory_code) return showBanner("<strong>Territory code required</strong>");
 
-        setMsg(msg, "Saving...");
-        const { error } = await supabaseClient
-          .from("territory_links")
-          .upsert(rec, { onConflict: "territory_code" });
+        setMsg("Saving...");
+        const { error } = await supabaseClient.from("territory_links").upsert(rec, { onConflict: "territory_code" });
 
-        setMsg(msg, error ? ("Save error: " + error.message) : "Saved.");
-        if (!error) await render();
+        if (error) {
+          setMsg("");
+          return showBanner("<strong>Save failed</strong><div class='muted'>" + error.message + "</div>");
+        }
+
+        setMsg("Saved.");
+        await render();
       });
     });
 
