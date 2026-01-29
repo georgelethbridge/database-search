@@ -8,68 +8,65 @@
 </head>
 <body>
   <div class="container">
-    <div class="topbar">
+    <div class="header">
       <div class="brand">
         <div class="logo" aria-hidden="true"></div>
         <div>
           <h1>EP Territory Search</h1>
-          <p>Generate fast register links for territories</p>
+          <div class="sub">Generate fast register links for territories</div>
         </div>
       </div>
-      <div class="pill">
-        <span>Tip</span>
-        <span class="kbd">?DEEP1234567</span>
+      <div class="header-right">
+        <div class="badge">Tip <span class="kbd">?DEEP1234567</span></div>
       </div>
     </div>
 
-    <div class="grid two">
+    <div class="layout">
       <div class="card">
         <div class="card-header">
           <div>
-            <h2>Search</h2>
-            <div class="hint">Enter an EP publication number, then generate links.</div>
+            <div class="card-title">Search</div>
+            <div class="card-hint">Enter an EP publication number, then generate links.</div>
           </div>
         </div>
         <div class="card-body">
-          <div class="form-row">
-            <div class="field" style="max-width:260px;">
-              <label for="epPublicationNumber">EP Publication Number</label>
-              <input type="text" id="epPublicationNumber" placeholder="EP1234567" autocomplete="off" />
+          <div class="form">
+            <div class="row">
+              <div class="field">
+                <label for="epPublicationNumber">EP Publication Number</label>
+                <input type="text" id="epPublicationNumber" placeholder="EP1234567" autocomplete="off" />
+              </div>
+              <button class="btn" id="btnGenerateAll" type="button">Generate all</button>
             </div>
 
-            <button class="btn" id="btnGenerateAll" type="button">Generate all</button>
-          </div>
-
-          <div style="height:12px;"></div>
-
-          <div class="form-row">
-            <div class="field" style="max-width:180px;">
-              <label for="territoryCode">Territory Code</label>
-              <input type="text" id="territoryCode" placeholder="DE" autocomplete="off" />
+            <div class="row">
+              <div class="field">
+                <label for="territoryCode">Territory Code</label>
+                <input type="text" id="territoryCode" placeholder="DE" autocomplete="off" />
+              </div>
+              <button class="btn secondary" id="btnGenerateOne" type="button">Generate one</button>
             </div>
 
-            <button class="btn secondary" id="btnGenerateOne" type="button">Generate one</button>
-
-            <div class="field" style="max-width:320px; flex: 2;">
-              <label for="importedApplicationNumber">Imported EP Application Number</label>
-              <input type="text" id="importedApplicationNumber" readonly placeholder="Will load from EPO..." />
+            <div class="row">
+              <div class="field full">
+                <label for="importedApplicationNumber">Imported EP Application Number</label>
+                <input type="text" id="importedApplicationNumber" readonly placeholder="Will load from EPO…" />
+              </div>
             </div>
-          </div>
 
-          <div style="height:12px;"></div>
-
-          <div class="form-row">
-            <div class="field" style="min-width:260px;">
-              <label class="muted">
-                <input type="checkbox" id="autoOpenToggle" />
-                Auto-open the generated link (single territory only)
-              </label>
+            <div class="row">
+              <div class="note">
+                <label>
+                  <input type="checkbox" id="autoOpenToggle" />
+                  Auto-open the generated link (single territory only)
+                </label>
+              </div>
             </div>
-          </div>
 
-          <div class="banner" id="alertsContainer" role="alert">
-            <strong id="alertsTitle">An error occurred</strong>
-            <div id="alertsSection"></div>
+            <div class="alert" id="alertsContainer" role="alert">
+              <strong id="alertsTitle">An error occurred</strong>
+              <div id="alertsSection"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -77,8 +74,8 @@
       <div class="card results" id="resultsCard">
         <div class="card-header">
           <div>
-            <h2>Results</h2>
-            <div class="hint">Click a territory to open. Use the copy icon to copy the link.</div>
+            <div class="card-title">Results</div>
+            <div class="card-hint">Click a territory to open. Use the copy icon to copy the link.</div>
           </div>
           <button class="btn secondary icon" id="btnClear" type="button" title="Clear results">Clear</button>
         </div>
@@ -88,7 +85,7 @@
           <div style="height:12px;"></div>
 
           <details id="noLinksDetails" style="display:none;">
-            <summary class="muted">Territories with no link</summary>
+            <summary class="note">Territories with no link</summary>
             <div id="noLinksContainer" style="margin-top:10px;"></div>
           </details>
         </div>
@@ -103,9 +100,9 @@
     // ---------------------------
     // Supabase configuration
     // ---------------------------
-    // TODO: Replace these with your Supabase project settings:
-    // Supabase Dashboard -> Settings -> Data API -> Project URL
-    // Supabase Dashboard -> Settings -> API Keys -> Publishable key
+    // Replace these with your Supabase project settings:
+    // Settings → Data API → Project URL
+    // Settings → API Keys → Publishable key
     const SUPABASE_URL = "https://xgbdcwxlpzjggxobcqfr.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_dr_BwE5yA1hXAI7WBO3-wA_yqD_bZmm";
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -162,9 +159,9 @@
       clearError();
     }
 
-    // ----- URL query parsing
+    // URL query parsing
     function getQueryParameter() {
-      const regex = /\?(.+)/; // matches everything after '?'
+      const regex = /\?(.+)/;
       const results = regex.exec(location.search);
       return results === null ? null : decodeURIComponent(results[1].replace(/\+/g, " "));
     }
@@ -191,7 +188,7 @@
       }
     }
 
-    // ----- Supabase load
+    // Supabase load
     async function loadTerritoryLinksFromSupabase() {
       const { data, error } = await supabaseClient
         .from("territory_links")
@@ -216,7 +213,7 @@
       return true;
     }
 
-    // ----- Formatting helpers
+    // Formatting helpers
     function EPXXXXXXXX_Y(applicationNumber) { return "EP" + applicationNumber; }
     function XXXXXXXX_Y(applicationNumber) { return applicationNumber; }
     function XXXXXXXXY(applicationNumber) { return applicationNumber.replace(".", ""); }
@@ -267,23 +264,23 @@
       </svg>
     `;
 
-    function addLinkCard(code, finalLink, isDisabled=false) {
-      const card = document.createElement("div");
-      card.className = "link-card" + (isDisabled ? " disabled" : "");
-      card.innerHTML = `
-        <div class="code">${code}</div>
-        <div class="url">${finalLink || "No link"}</div>
-        ${isDisabled ? "" : `<div class="copy" title="Copy link">${COPY_SVG}</div>`}
+    function addLinkTile(code, finalLink, isDisabled=false) {
+      const tile = document.createElement("div");
+      tile.className = "link-tile" + (isDisabled ? " disabled" : "");
+      tile.innerHTML = `
+        <div class="link-code">${code}</div>
+        <div class="link-sub">${finalLink || "No link"}</div>
+        ${isDisabled ? "" : `<div class="copy-btn" title="Copy link">${COPY_SVG}</div>`}
       `;
 
       if (!isDisabled) {
-        card.addEventListener("click", (e) => {
-          const isCopy = e.target.closest(".copy");
+        tile.addEventListener("click", (e) => {
+          const isCopy = e.target.closest(".copy-btn");
           if (isCopy) return;
           openLink(finalLink);
         });
 
-        const copyBtn = card.querySelector(".copy");
+        const copyBtn = tile.querySelector(".copy-btn");
         copyBtn.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -291,10 +288,10 @@
         });
       }
 
-      linksGrid.appendChild(card);
+      linksGrid.appendChild(tile);
     }
 
-    // ----- EPO fetch
+    // EPO fetch
     async function fetchXmlData(epPubValue) {
       const input = (epPubValue || "").trim();
       if (!input) throw new Error("Missing EP publication number.");
@@ -320,7 +317,7 @@
       noLinksContainer.innerHTML = "";
       noLinksDetails.style.display = "none";
       resultsCard.classList.add("show");
-      importedApplicationNumber.value = "Loading...";
+      importedApplicationNumber.value = "Loading…";
       b210Value = "";
     }
 
@@ -358,15 +355,15 @@
         }
 
         if (queryLink) {
-          addLinkCard(code, finalLink, false);
+          addLinkTile(code, finalLink, false);
           if (autoOpenToggle.checked) openLink(finalLink);
         } else {
-          addLinkCard(code, "No link configured", true);
+          addLinkTile(code, "No link configured", true);
         }
       } catch (e) {
         console.error(e);
         importedApplicationNumber.value = "Error";
-        showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='muted'>" + (e.message || e) + "</span>");
+        showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='note'>" + (e.message || e) + "</span>");
       }
     }
 
@@ -401,7 +398,7 @@
           }
 
           if (queryLink) {
-            addLinkCard(code, finalLink, false);
+            addLinkTile(code, finalLink, false);
           } else {
             noLinks.push(code);
           }
@@ -409,35 +406,27 @@
 
         if (noLinks.length) {
           noLinksDetails.style.display = "block";
-          noLinksContainer.innerHTML = noLinks.map(c => `<div class="muted">${c}: No link configured</div>`).join("");
+          noLinksContainer.innerHTML = noLinks.map(c => `<div class="note">${c}: No link configured</div>`).join("");
         }
       } catch (e) {
         console.error(e);
         importedApplicationNumber.value = "Error";
-        showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='muted'>" + (e.message || e) + "</span>");
+        showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='note'>" + (e.message || e) + "</span>");
       }
     }
 
-    // Wire buttons + enter key
     btnGenerateAll.addEventListener("click", generateLinks);
     btnGenerateOne.addEventListener("click", generateSpecificLink);
     btnClear.addEventListener("click", clearResults);
 
-    epPublicationNumber.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") generateLinks();
-    });
-    territoryCodeInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") generateSpecificLink();
-    });
+    epPublicationNumber.addEventListener("keydown", (e) => { if (e.key === "Enter") generateLinks(); });
+    territoryCodeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") generateSpecificLink(); });
 
-    // Init
     window.addEventListener("DOMContentLoaded", async () => {
       const ok = await loadTerritoryLinksFromSupabase();
       if (!ok) {
-        showError(
-          "Config load failed",
-          "Could not load territory links from Supabase. Check <span class='kbd'>SUPABASE_URL</span> and <span class='kbd'>SUPABASE_ANON_KEY</span>, and ensure your RLS policy allows SELECT."
-        );
+        showError("Config load failed",
+          "Could not load territory links from Supabase. Check <span class='kbd'>SUPABASE_URL</span> and <span class='kbd'>SUPABASE_ANON_KEY</span>, and ensure your RLS policy allows SELECT.");
         return;
       }
       prefillInputBoxes();
