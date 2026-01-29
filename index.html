@@ -297,7 +297,7 @@
       if (!input) throw new Error("Missing EP publication number.");
 
       const normalized = input.toUpperCase().startsWith("EP") ? input.substring(2) : input;
-      const EPOXMLLink = "https://corsproxy.io/?https://data.epo.org/publication-server/rest/v1.2/patents/EP" + normalized + "NWB1/document.xml";
+      const EPOXMLLink = "https://api.allorigins.win/raw?url=https://data.epo.org/publication-server/rest/v1.2/patents/EP" + normalized + "NWB1/document.xml";
 
       const res = await fetch(EPOXMLLink);
       if (!res.ok) throw new Error("EPO fetch failed (" + res.status + ")");
