@@ -183,14 +183,8 @@
           epPublicationNumber.value = query.substring(2);
           generateSpecificLink();
         } else {
-          territoryCodeInput.value = "";
-          epPublicationNumber.value = query.substring();
-          generateLinks();
-        }
-      } else {
-        showError("Invalid query", "Territory code not recognised: <strong>" + territoryCode + "</strong>");
-      }
-    } else {
+          // Just an EP publication number (no territory prefix), e.g. ?EP1234567
+          autoRedirectOnQuery = false;
           territoryCodeInput.value = "";
           epPublicationNumber.value = query.substring();
           generateLinks();
