@@ -373,7 +373,7 @@
 
         // Add a timeout so direct redirects don't hang forever.
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
 
         const xml = await fetchXmlData(epPublicationNumber.value, controller.signal);
         clearTimeout(timeoutId);
