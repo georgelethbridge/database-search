@@ -304,14 +304,14 @@
     }
 
     // EPO fetch
-    async function fetchXmlData(epPubValue) {
+    async function fetchXmlData(epPubValue, signal) {
       const input = (epPubValue || "").trim();
       if (!input) throw new Error("Missing EP publication number.");
 
       const normalized = input.toUpperCase().startsWith("EP") ? input.substring(2) : input;
       const EPOXMLLink = "https://api.allorigins.win/raw?url=https://data.epo.org/publication-server/rest/v1.2/patents/EP" + normalized + "NWB1/document.xml";
 
-      const res = await fetch(EPOXMLLink);
+      const res = await fetch(EPOXMLLink, signal ? { signal } : undefined);
       if (!res.ok) throw new Error("EPO fetch failed (" + res.status + ")");
       return await res.text();
     }
@@ -337,21 +337,55 @@
       sharedResetUI();
 
       try {
-        const xml = await fetchXmlData(epPublicationNumber.value);
-        b210Value = parseB210(xml);
-        importedApplicationNumber.value = b210Value || "Not found";
-
         const code = (territoryCodeInput.value || "").toUpperCase().trim();
         const territory = territoryLinks[code];
 
         if (!territory) {
           showError("Invalid territory", "Territory code not recognised: <strong>" + code + "</strong>");
+          importedApplicationNumber.value = "";
           return;
         }
 
         const queryLink = territory.link;
         const requiredNumber = territory.requiredNumber;
         const format = territory.format;
+
+        // If this territory only needs the EP publication number, we can generate instantly
+        // (no slow EPO XML call needed).
+        if (requiredNumber !== "EP Application Number") {
+          importedApplicationNumber.value = "";
+          let formattedNumber = format ? generateFormattedNumber(format, epPublicationNumber.value) : epPublicationNumber.value;
+
+          let finalLink = queryLink;
+          if (finalLink && formattedNumber) {
+            finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
+          }
+
+          if (queryLink) {
+            if (autoRedirectOnQuery) {
+              window.location.replace(finalLink);
+              return;
+            }
+            addLinkTile(code, finalLink, false);
+            if (autoOpenToggle.checked) openLink(finalLink);
+          } else {
+            addLinkTile(code, "No link configured", true);
+          }
+          return;
+        }
+
+        // Otherwise, we need the EP application number (B210) which requires an EPO XML fetch.
+        importedApplicationNumber.value = autoRedirectOnQuery ? "Redirecting…" : "Loading…";
+
+        // Add a timeout so direct redirects don't hang forever.
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const xml = await fetchXmlData(epPublicationNumber.value, controller.signal);
+        clearTimeout(timeoutId);
+
+        b210Value = parseB210(xml);
+        importedApplicationNumber.value = b210Value || "Not found";
 
         let formattedNumber = "";
 
@@ -381,7 +415,11 @@
       } catch (e) {
         console.error(e);
         importedApplicationNumber.value = "Error";
-        showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='note'>" + (e.message || e) + "</span>");
+        if (e && e.name === "AbortError") {
+          showError("Taking too long", "Fetching the EP application number from EPO timed out. Try again, or open the page normally and click Generate one.");
+        } else {
+          showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='note'>" + (e.message || e) + "</span>");
+        }
       }
     }
 
@@ -429,7 +467,11 @@
       } catch (e) {
         console.error(e);
         importedApplicationNumber.value = "Error";
-        showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='note'>" + (e.message || e) + "</span>");
+        if (e && e.name === "AbortError") {
+          showError("Taking too long", "Fetching the EP application number from EPO timed out. Try again, or open the page normally and click Generate one.");
+        } else {
+          showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='note'>" + (e.message || e) + "</span>");
+        }
       }
     }
 
