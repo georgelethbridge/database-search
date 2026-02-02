@@ -131,6 +131,7 @@
     // Data
     let territoryLinks = {};
     let b210Value = "";
+    let autoRedirectOnQuery = false; // true when URL is like ?DEEP1234567
 
     function showToast(text) {
       toast.textContent = text;
@@ -175,10 +176,21 @@
 
       if (territoryCode in territoryLinks) {
         if (query.substring(2, 4) === "EP") {
+          // Specific territory + EP publication number, e.g. ?DEEP1234567
+          // In this mode we will auto-redirect the current page to the generated link.
+          autoRedirectOnQuery = true;
           territoryCodeInput.value = territoryCode;
           epPublicationNumber.value = query.substring(2);
           generateSpecificLink();
         } else {
+          territoryCodeInput.value = "";
+          epPublicationNumber.value = query.substring();
+          generateLinks();
+        }
+      } else {
+        showError("Invalid query", "Territory code not recognised: <strong>" + territoryCode + "</strong>");
+      }
+    } else {
           territoryCodeInput.value = "";
           epPublicationNumber.value = query.substring();
           generateLinks();
@@ -355,6 +367,12 @@
         }
 
         if (queryLink) {
+          // If we arrived via a direct URL query (?DEEP1234567), redirect this page to the generated link.
+          if (autoRedirectOnQuery) {
+            window.location.replace(finalLink);
+            return;
+          }
+
           addLinkTile(code, finalLink, false);
           if (autoOpenToggle.checked) openLink(finalLink);
         } else {
@@ -415,12 +433,12 @@
       }
     }
 
-    btnGenerateAll.addEventListener("click", generateLinks);
-    btnGenerateOne.addEventListener("click", generateSpecificLink);
+    btnGenerateAll.addEventListener("click", () => { autoRedirectOnQuery = false; generateLinks(); });
+    btnGenerateOne.addEventListener("click", () => { autoRedirectOnQuery = false; generateSpecificLink(); });
     btnClear.addEventListener("click", clearResults);
 
-    epPublicationNumber.addEventListener("keydown", (e) => { if (e.key === "Enter") generateLinks(); });
-    territoryCodeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") generateSpecificLink(); });
+    epPublicationNumber.addEventListener("keydown", (e) => { if (e.key === "Enter") { autoRedirectOnQuery = false; generateLinks(); } });
+    territoryCodeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { autoRedirectOnQuery = false; generateSpecificLink(); } });
 
     window.addEventListener("DOMContentLoaded", async () => {
       const ok = await loadTerritoryLinksFromSupabase();
