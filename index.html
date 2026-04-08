@@ -336,7 +336,6 @@
         timedOut = true;
         controller.abort();
       }, timeoutMs);
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const onAbort = () => controller.abort();
       signal?.addEventListener("abort", onAbort, { once: true });
       try {
