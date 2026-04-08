@@ -96,6 +96,7 @@
   <div class="toast" id="toast" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./app-logic.js"></script>
   <script>
     // ---------------------------
     // Supabase configuration
@@ -298,23 +299,101 @@
     }
 
     // EPO fetch
+    const APPLICATION_CACHE_PREFIX = "ep-app-number:";
+    const FETCH_TIMEOUT_MS = 12000;
+    const FETCH_TIMEOUT_ERROR = "FETCH_TIMEOUT";
+    const logic = window.EPTerritorySearch || {};
+    const normalizeEpPublicationNumber = logic.normalizeEpPublicationNumber || ((v) => v || "");
+    const createEpoXmlCandidates = logic.createEpoXmlCandidates || (() => []);
+    const buildProxyUrls = logic.buildProxyUrls || ((url) => [url]);
+    const extractApplicationNumberFromXml = logic.extractApplicationNumberFromXml || (() => "");
+    const hasApplicationNumberTerritory = logic.hasApplicationNumberTerritory || (() => true);
+
+    function getCachedApplicationNumber(epPubValue) {
+      const normalized = normalizeEpPublicationNumber(epPubValue);
+      if (!normalized) return "";
+      try {
+        return localStorage.getItem(APPLICATION_CACHE_PREFIX + normalized) || "";
+      } catch {
+        return "";
+      }
+    }
+
+    function setCachedApplicationNumber(epPubValue, applicationNumber) {
+      const normalized = normalizeEpPublicationNumber(epPubValue);
+      if (!normalized || !applicationNumber) return;
+      try {
+        localStorage.setItem(APPLICATION_CACHE_PREFIX + normalized, applicationNumber);
+      } catch {
+        // Ignore localStorage failures (private mode/quota)
+      }
+    }
+
+    async function fetchWithTimeout(url, timeoutMs, signal) {
+      const controller = new AbortController();
+      let timedOut = false;
+      const fetchTimeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs);
+      const onAbort = () => controller.abort();
+      signal?.addEventListener("abort", onAbort, { once: true });
+      try {
+        return await fetch(url, { signal: controller.signal });
+      } catch (e) {
+        // Distinguish local per-attempt timeout from explicit upstream abort.
+        if (timedOut) {
+          const timeoutError = new Error(FETCH_TIMEOUT_ERROR);
+          timeoutError.name = FETCH_TIMEOUT_ERROR;
+          throw timeoutError;
+        }
+        throw e;
+      } finally {
+        clearTimeout(fetchTimeoutId);
+        signal?.removeEventListener("abort", onAbort);
+      }
+    }
+
     async function fetchXmlData(epPubValue, signal) {
-      const input = (epPubValue || "").trim();
-      if (!input) throw new Error("Missing EP publication number.");
+      const candidates = createEpoXmlCandidates(epPubValue);
+      if (!candidates.length) throw new Error("Missing EP publication number.");
 
-      const normalized = input.toUpperCase().startsWith("EP") ? input.substring(2) : input;
-      const EPOXMLLink = "https://api.allorigins.win/raw?url=https://data.epo.org/publication-server/rest/v1.2/patents/EP" + normalized + "NWB1/document.xml";
+      const failures = [];
+      for (const baseUrl of candidates) {
+        const attempts = buildProxyUrls(baseUrl);
+        for (const url of attempts) {
+          try {
+            const res = await fetchWithTimeout(url, FETCH_TIMEOUT_MS, signal);
+            if (!res.ok) {
+              failures.push(res.status + " @ " + url);
+              continue;
+            }
+            const text = await res.text();
+            if (text && text.includes("<")) return text;
+            failures.push("Invalid XML payload @ " + url);
+          } catch (e) {
+            // If the caller explicitly aborted, stop immediately.
+            if (e?.name === "AbortError" && signal?.aborted) throw e;
+            failures.push((e.message || e) + " @ " + url);
+          }
+        }
+      }
 
-      const res = await fetch(EPOXMLLink, signal ? { signal } : undefined);
-      if (!res.ok) throw new Error("EPO fetch failed (" + res.status + ")");
-      return await res.text();
+      throw new Error("Failed to fetch EP publication XML. Tried " + failures.length + " endpoints.");
     }
 
     function parseB210(xmlText) {
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-      const b210 = xmlDoc.querySelector("B210");
-      return b210 ? b210.textContent : "";
+      return extractApplicationNumberFromXml(xmlText);
+    }
+
+    async function resolveApplicationNumber(epPublicationNumberValue, signal) {
+      const cached = getCachedApplicationNumber(epPublicationNumberValue);
+      if (cached) return { value: cached, source: "cache" };
+
+      const xml = await fetchXmlData(epPublicationNumberValue, signal);
+      const parsed = parseB210(xml);
+      if (parsed) setCachedApplicationNumber(epPublicationNumberValue, parsed);
+      return { value: parsed, source: "epo" };
     }
 
     function sharedResetUI() {
@@ -373,12 +452,12 @@
 
         // Add a timeout so direct redirects don't hang forever.
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        const redirectTimeoutId = setTimeout(() => controller.abort(), 20000);
 
-        const xml = await fetchXmlData(epPublicationNumber.value, controller.signal);
-        clearTimeout(timeoutId);
+        const result = await resolveApplicationNumber(epPublicationNumber.value, controller.signal);
+        clearTimeout(redirectTimeoutId);
 
-        b210Value = parseB210(xml);
+        b210Value = result.value;
         importedApplicationNumber.value = b210Value || "Not found";
 
         let formattedNumber = "";
@@ -421,12 +500,18 @@
       sharedResetUI();
 
       try {
-        const xml = await fetchXmlData(epPublicationNumber.value);
-        b210Value = parseB210(xml);
-        importedApplicationNumber.value = b210Value || "Not found";
-
         const codes = Object.keys(territoryLinks).sort();
         const noLinks = [];
+        const requiresAppNumber = hasApplicationNumberTerritory(territoryLinks, codes);
+
+        if (requiresAppNumber) {
+          const result = await resolveApplicationNumber(epPublicationNumber.value);
+          b210Value = result.value;
+          importedApplicationNumber.value = b210Value || "Not found";
+        } else {
+          importedApplicationNumber.value = "Not required";
+          b210Value = "";
+        }
 
         for (const code of codes) {
           const territory = territoryLinks[code];
