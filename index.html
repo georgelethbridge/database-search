@@ -336,7 +336,6 @@
         timedOut = true;
         controller.abort();
       }, timeoutMs);
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const onAbort = () => controller.abort();
       signal?.addEventListener("abort", onAbort, { once: true });
       try {
@@ -456,8 +455,12 @@
         const controller = new AbortController();
         const redirectTimeoutId = setTimeout(() => controller.abort(), 20000);
 
-        const result = await resolveApplicationNumber(epPublicationNumber.value, controller.signal);
-        clearTimeout(timeoutId);
+        let result;
+        try {
+          result = await resolveApplicationNumber(epPublicationNumber.value, controller.signal);
+        } finally {
+          clearTimeout(redirectTimeoutId);
+        }
 
         b210Value = result.value;
         importedApplicationNumber.value = b210Value || "Not found";
@@ -507,9 +510,19 @@
         const requiresAppNumber = hasApplicationNumberTerritory(territoryLinks, codes);
 
         if (requiresAppNumber) {
-          const result = await resolveApplicationNumber(epPublicationNumber.value);
-          b210Value = result.value;
-          importedApplicationNumber.value = b210Value || "Not found";
+          try {
+            const result = await resolveApplicationNumber(epPublicationNumber.value);
+            b210Value = result.value;
+            importedApplicationNumber.value = b210Value || "Not found";
+          } catch (e) {
+            console.warn("Could not resolve EP application number; continuing with publication-number links only.", e);
+            b210Value = "";
+            importedApplicationNumber.value = "Unavailable";
+            showError(
+              "Application number unavailable",
+              "Could not fetch the EP application number from EPO right now. Publication-number links are still shown; application-number links are marked unavailable."
+            );
+          }
         } else {
           importedApplicationNumber.value = "Not required";
           b210Value = "";
@@ -532,6 +545,11 @@
           let finalLink = queryLink;
           if (finalLink && formattedNumber) {
             finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
+          }
+
+          if (requiredNumber === "EP Application Number" && !b210Value) {
+            addLinkTile(code, "Application number unavailable", true);
+            continue;
           }
 
           if (queryLink) {
