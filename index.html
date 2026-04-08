@@ -301,6 +301,7 @@
     // EPO fetch
     const APPLICATION_CACHE_PREFIX = "ep-app-number:";
     const FETCH_TIMEOUT_MS = 12000;
+    const FETCH_TIMEOUT_ERROR = "FETCH_TIMEOUT";
     const logic = window.EPTerritorySearch || {};
     const normalizeEpPublicationNumber = logic.normalizeEpPublicationNumber || ((v) => v || "");
     const createEpoXmlCandidates = logic.createEpoXmlCandidates || (() => []);
@@ -330,11 +331,24 @@
 
     async function fetchWithTimeout(url, timeoutMs, signal) {
       const controller = new AbortController();
+      let timedOut = false;
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs);
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const onAbort = () => controller.abort();
       signal?.addEventListener("abort", onAbort, { once: true });
       try {
         return await fetch(url, { signal: controller.signal });
+      } catch (e) {
+        // Distinguish local per-attempt timeout from explicit upstream abort.
+        if (timedOut) {
+          const timeoutError = new Error(FETCH_TIMEOUT_ERROR);
+          timeoutError.name = FETCH_TIMEOUT_ERROR;
+          throw timeoutError;
+        }
+        throw e;
       } finally {
         clearTimeout(timeoutId);
         signal?.removeEventListener("abort", onAbort);
@@ -359,6 +373,8 @@
             if (text && text.includes("<")) return text;
             failures.push("Invalid XML payload @ " + url);
           } catch (e) {
+            // If the caller explicitly aborted, stop immediately.
+            if (e?.name === "AbortError" && signal?.aborted) throw e;
             if (e?.name === "AbortError") throw e;
             failures.push((e.message || e) + " @ " + url);
           }
