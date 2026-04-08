@@ -454,7 +454,7 @@
 
         // Add a timeout so direct redirects don't hang forever.
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        const redirectTimeoutId = setTimeout(() => controller.abort(), 20000);
 
         const result = await resolveApplicationNumber(epPublicationNumber.value, controller.signal);
         clearTimeout(timeoutId);
