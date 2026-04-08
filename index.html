@@ -332,10 +332,11 @@
     async function fetchWithTimeout(url, timeoutMs, signal) {
       const controller = new AbortController();
       let timedOut = false;
-      const fetchTimeoutId = setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         timedOut = true;
         controller.abort();
       }, timeoutMs);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const onAbort = () => controller.abort();
       signal?.addEventListener("abort", onAbort, { once: true });
       try {
@@ -349,7 +350,7 @@
         }
         throw e;
       } finally {
-        clearTimeout(fetchTimeoutId);
+        clearTimeout(timeoutId);
         signal?.removeEventListener("abort", onAbort);
       }
     }
@@ -374,6 +375,7 @@
           } catch (e) {
             // If the caller explicitly aborted, stop immediately.
             if (e?.name === "AbortError" && signal?.aborted) throw e;
+            if (e?.name === "AbortError") throw e;
             failures.push((e.message || e) + " @ " + url);
           }
         }
@@ -455,7 +457,7 @@
         const redirectTimeoutId = setTimeout(() => controller.abort(), 20000);
 
         const result = await resolveApplicationNumber(epPublicationNumber.value, controller.signal);
-        clearTimeout(redirectTimeoutId);
+        clearTimeout(timeoutId);
 
         b210Value = result.value;
         importedApplicationNumber.value = b210Value || "Not found";
