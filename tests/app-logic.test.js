@@ -25,9 +25,10 @@ test("createEpoXmlCandidates builds ordered candidate URLs", () => {
 test("buildProxyUrls returns all configured proxy routes", () => {
   const target = "https://data.epo.org/publication-server/rest/v1.2/patents/EP123/document.xml";
   const proxied = buildProxyUrls(target);
-  assert.equal(proxied.length, 2);
-  assert.match(proxied[0], /^https:\/\/api\.allorigins\.win\/raw\?url=/);
-  assert.match(proxied[1], /^https:\/\/r\.jina\.ai\/http:\/\/data\.epo\.org\//);
+  assert.equal(proxied[0], target);
+  assert.ok(proxied.length >= 3);
+  assert.match(proxied[1], /^https:\/\/api\.allorigins\.win\/raw\?url=/);
+  assert.match(proxied[2], /^https:\/\/r\.jina\.ai\/http:\/\/data\.epo\.org\//);
 });
 
 test("extractApplicationNumberFromXml prioritizes B210 then fallback doc-number", () => {

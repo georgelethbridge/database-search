@@ -25,8 +25,10 @@
 
   function buildProxyUrls(url) {
     return [
+      url,
       "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
-      "https://r.jina.ai/http://" + url.replace(/^https?:\/\//i, "")
+      "https://r.jina.ai/http://" + url.replace(/^https?:\/\//i, ""),
+      "https://corsproxy.io/?" + encodeURIComponent(url)
     ];
   }
 
