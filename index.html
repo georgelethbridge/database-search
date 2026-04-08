@@ -96,7 +96,7 @@
   <div class="toast" id="toast" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./app-logic.js"></script>
+  <script src="./app-logic.js?v=2026-04-08"></script>
   <script>
     // ---------------------------
     // Supabase configuration
@@ -305,7 +305,10 @@
     const logic = window.EPTerritorySearch || {};
     const normalizeEpPublicationNumber = logic.normalizeEpPublicationNumber || ((v) => v || "");
     const createEpoXmlCandidates = logic.createEpoXmlCandidates || (() => []);
-    const buildProxyUrls = logic.buildProxyUrls || ((url) => [url]);
+    const buildProxyUrls = ((url) => [
+      "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
+      "https://r.jina.ai/http://" + url.replace(/^https?:\/\//i, "")
+    ]);
     const extractApplicationNumberFromXml = logic.extractApplicationNumberFromXml || (() => "");
     const hasApplicationNumberTerritory = logic.hasApplicationNumberTerritory || (() => true);
 
