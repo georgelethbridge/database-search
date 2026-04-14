@@ -26,15 +26,15 @@
         <div class="card-header">
           <div>
             <div class="card-title">Search</div>
-            <div class="card-hint">Enter an EP publication number, then generate links.</div>
+            <div class="card-hint">Enter an EP publication or application number, then generate links.</div>
           </div>
         </div>
         <div class="card-body">
           <div class="form">
             <div class="row">
               <div class="field">
-                <label for="epPublicationNumber">EP Publication Number</label>
-                <input type="text" id="epPublicationNumber" placeholder="EP1234567" autocomplete="off" />
+                <label for="epPublicationNumber">EP Publication or Application Number</label>
+                <input type="text" id="epPublicationNumber" placeholder="EP1234567 or EP18752904.5" autocomplete="off" />
               </div>
               <button class="btn" id="btnGenerateAll" type="button">Generate all</button>
             </div>
@@ -49,7 +49,14 @@
 
             <div class="row">
               <div class="field full">
-                <label for="importedApplicationNumber">Imported EP Application Number</label>
+                <label for="resolvedPublicationNumber">Resolved EP Publication Number</label>
+                <input type="text" id="resolvedPublicationNumber" readonly placeholder="Will load from EPO…" />
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="field full">
+                <label for="importedApplicationNumber">Resolved EP Application Number</label>
                 <input type="text" id="importedApplicationNumber" readonly placeholder="Will load from EPO…" />
               </div>
             </div>
@@ -101,11 +108,9 @@
     // ---------------------------
     // Supabase configuration
     // ---------------------------
-    // Replace these with your Supabase project settings:
-    // Settings → Data API → Project URL
-    // Settings → API Keys → Publishable key
     const SUPABASE_URL = "https://xgbdcwxlpzjggxobcqfr.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_dr_BwE5yA1hXAI7WBO3-wA_yqD_bZmm";
+    const BACKEND_URL = "https://api-ipb9.onrender.com/epo";
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // UI elements
@@ -118,6 +123,7 @@
     const noLinksContainer = document.getElementById("noLinksContainer");
     const noLinksDetails = document.getElementById("noLinksDetails");
 
+    const resolvedPublicationNumber = document.getElementById("resolvedPublicationNumber");
     const importedApplicationNumber = document.getElementById("importedApplicationNumber");
     const epPublicationNumber = document.getElementById("epPublicationNumber");
     const territoryCodeInput = document.getElementById("territoryCode");
@@ -131,7 +137,7 @@
 
     // Data
     let territoryLinks = {};
-    let b210Value = "";
+    let resolvedNumbers = { publicationNumber: "", applicationNumber: "", inputType: "" };
     let autoRedirectOnQuery = false; // true when URL is like ?DEEP1234567
 
     function showToast(text) {
@@ -156,12 +162,12 @@
       noLinksContainer.innerHTML = "";
       noLinksDetails.style.display = "none";
       resultsCard.classList.remove("show");
+      resolvedPublicationNumber.value = "";
       importedApplicationNumber.value = "";
-      b210Value = "";
+      resolvedNumbers = { publicationNumber: "", applicationNumber: "", inputType: "" };
       clearError();
     }
 
-    // URL query parsing
     function getQueryParameter() {
       const regex = /\?(.+)/;
       const results = regex.exec(location.search);
@@ -177,14 +183,11 @@
 
       if (territoryCode in territoryLinks) {
         if (query.substring(2, 4) === "EP") {
-          // Specific territory + EP publication number, e.g. ?DEEP1234567
-          // In this mode we will auto-redirect the current page to the generated link.
           autoRedirectOnQuery = true;
           territoryCodeInput.value = territoryCode;
           epPublicationNumber.value = query.substring(2);
           generateSpecificLink();
         } else {
-          // Just an EP publication number (no territory prefix), e.g. ?EP1234567
           autoRedirectOnQuery = false;
           territoryCodeInput.value = "";
           epPublicationNumber.value = query.substring();
@@ -195,7 +198,6 @@
       }
     }
 
-    // Supabase load
     async function loadTerritoryLinksFromSupabase() {
       const { data, error } = await supabaseClient
         .from("territory_links")
@@ -298,260 +300,123 @@
       linksGrid.appendChild(tile);
     }
 
-    // EPO fetch
-    const APPLICATION_CACHE_PREFIX = "ep-app-number:";
-    const FETCH_TIMEOUT_MS = 12000;
-    const FETCH_TIMEOUT_ERROR = "FETCH_TIMEOUT";
-    const logic = window.EPTerritorySearch || {};
-    const normalizeEpPublicationNumber = logic.normalizeEpPublicationNumber || ((v) => v || "");
-    const createEpoXmlCandidates = logic.createEpoXmlCandidates || (() => []);
-    const buildProxyUrls = ((url) => [
-      "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
-      "https://r.jina.ai/http://" + url.replace(/^https?:\/\//i, "")
-    ]);
-    const extractApplicationNumberFromXml = logic.extractApplicationNumberFromXml || (() => "");
-    const hasApplicationNumberTerritory = logic.hasApplicationNumberTerritory || (() => true);
+    const RESOLUTION_CACHE_PREFIX = "ep-lookup:";
 
-    function getCachedApplicationNumber(epPubValue) {
-      const normalized = normalizeEpPublicationNumber(epPubValue);
-      if (!normalized) return "";
+    function normalizeLookupInput(value) {
+      return (value || "").toUpperCase().trim().replace(/\s+/g, "");
+    }
+
+    function getCachedResolution(rawValue) {
+      const normalized = normalizeLookupInput(rawValue);
+      if (!normalized) return null;
       try {
-        return localStorage.getItem(APPLICATION_CACHE_PREFIX + normalized) || "";
+        const json = localStorage.getItem(RESOLUTION_CACHE_PREFIX + normalized);
+        return json ? JSON.parse(json) : null;
       } catch {
-        return "";
+        return null;
       }
     }
 
-    function setCachedApplicationNumber(epPubValue, applicationNumber) {
-      const normalized = normalizeEpPublicationNumber(epPubValue);
-      if (!normalized || !applicationNumber) return;
+    function setCachedResolution(rawValue, payload) {
+      const normalized = normalizeLookupInput(rawValue);
+      if (!normalized || !payload) return;
       try {
-        localStorage.setItem(APPLICATION_CACHE_PREFIX + normalized, applicationNumber);
+        localStorage.setItem(RESOLUTION_CACHE_PREFIX + normalized, JSON.stringify(payload));
       } catch {
-        // Ignore localStorage failures (private mode/quota)
+        // Ignore cache failures
       }
     }
 
-    async function fetchWithTimeout(url, timeoutMs, signal) {
-      const controller = new AbortController();
-      let timedOut = false;
-      const timeoutId = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, timeoutMs);
-      const onAbort = () => controller.abort();
-      signal?.addEventListener("abort", onAbort, { once: true });
-      try {
-        return await fetch(url, { signal: controller.signal });
-      } catch (e) {
-        // Distinguish local per-attempt timeout from explicit upstream abort.
-        if (timedOut) {
-          const timeoutError = new Error(FETCH_TIMEOUT_ERROR);
-          timeoutError.name = FETCH_TIMEOUT_ERROR;
-          throw timeoutError;
-        }
-        throw e;
-      } finally {
-        clearTimeout(timeoutId);
-        signal?.removeEventListener("abort", onAbort);
-      }
-    }
+    async function resolvePatentNumbers(rawValue, signal) {
+      const cached = getCachedResolution(rawValue);
+      if (cached?.publicationNumber || cached?.applicationNumber) return cached;
 
-    async function fetchXmlData(epPubValue, signal) {
-      const candidates = createEpoXmlCandidates(epPubValue);
-      if (!candidates.length) throw new Error("Missing EP publication number.");
+      const url = `${BACKEND_URL}/resolve?number=${encodeURIComponent(rawValue || "")}`;
+      const response = await fetch(url, { signal });
+      const data = await response.json().catch(() => ({}));
 
-      const failures = [];
-      for (const baseUrl of candidates) {
-        const attempts = buildProxyUrls(baseUrl);
-        for (const url of attempts) {
-          try {
-            const res = await fetchWithTimeout(url, FETCH_TIMEOUT_MS, signal);
-            if (!res.ok) {
-              failures.push(res.status + " @ " + url);
-              continue;
-            }
-            const text = await res.text();
-            if (text && text.includes("<")) return text;
-            failures.push("Invalid XML payload @ " + url);
-          } catch (e) {
-            // If the caller explicitly aborted, stop immediately.
-            if (e?.name === "AbortError" && signal?.aborted) throw e;
-            if (e?.name === "AbortError") throw e;
-            failures.push((e.message || e) + " @ " + url);
-          }
-        }
+      if (!response.ok) {
+        throw new Error(data?.error || "Could not resolve EP number.");
       }
 
-      throw new Error("Failed to fetch EP publication XML. Tried " + failures.length + " endpoints.");
+      setCachedResolution(rawValue, data);
+      return data;
     }
 
-    function parseB210(xmlText) {
-      return extractApplicationNumberFromXml(xmlText);
-    }
+    function setResolvedFields(payload) {
+      resolvedNumbers = {
+        publicationNumber: payload?.publicationNumber || "",
+        applicationNumber: payload?.applicationNumber || "",
+        inputType: payload?.inputType || ""
+      };
 
-    async function resolveApplicationNumber(epPublicationNumberValue, signal) {
-      const cached = getCachedApplicationNumber(epPublicationNumberValue);
-      if (cached) return { value: cached, source: "cache" };
-
-      const xml = await fetchXmlData(epPublicationNumberValue, signal);
-      const parsed = parseB210(xml);
-      if (parsed) setCachedApplicationNumber(epPublicationNumberValue, parsed);
-      return { value: parsed, source: "epo" };
+      resolvedPublicationNumber.value = resolvedNumbers.publicationNumber || "Unavailable";
+      importedApplicationNumber.value = resolvedNumbers.applicationNumber || "Unavailable";
     }
 
     function sharedResetUI() {
-      clearError();
-      linksGrid.innerHTML = "";
-      noLinksContainer.innerHTML = "";
-      noLinksDetails.style.display = "none";
+      clearResults();
+
+      const normalized = normalizeLookupInput(epPublicationNumber.value);
+      epPublicationNumber.value = normalized;
+
+      if (!normalized) {
+        showError("Missing number", "Enter an EP publication or application number first.");
+        return false;
+      }
+
       resultsCard.classList.add("show");
-      importedApplicationNumber.value = "Loading…";
-      b210Value = "";
+      return true;
     }
 
-    async function generateSpecificLink() {
-      sharedResetUI();
+    function getFormattedNumberForTerritory(territory) {
+      if (!territory) return "";
 
-      try {
-        const code = (territoryCodeInput.value || "").toUpperCase().trim();
-        const territory = territoryLinks[code];
+      const requiredNumber = territory.requiredNumber;
+      const format = territory.format;
 
-        if (!territory) {
-          showError("Invalid territory", "Territory code not recognised: <strong>" + code + "</strong>");
-          importedApplicationNumber.value = "";
-          return;
-        }
-
-        const queryLink = territory.link;
-        const requiredNumber = territory.requiredNumber;
-        const format = territory.format;
-
-        // If this territory only needs the EP publication number, we can generate instantly
-        // (no slow EPO XML call needed).
-        if (requiredNumber !== "EP Application Number") {
-          importedApplicationNumber.value = "";
-          let formattedNumber = format ? generateFormattedNumber(format, epPublicationNumber.value) : epPublicationNumber.value;
-
-          let finalLink = queryLink;
-          if (finalLink && formattedNumber) {
-            finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
-          }
-
-          if (queryLink) {
-            if (autoRedirectOnQuery) {
-              window.location.replace(finalLink);
-              return;
-            }
-            addLinkTile(code, finalLink, false);
-            if (autoOpenToggle.checked) openLink(finalLink);
-          } else {
-            addLinkTile(code, "No link configured", true);
-          }
-          return;
-        }
-
-        // Otherwise, we need the EP application number (B210) which requires an EPO XML fetch.
-        importedApplicationNumber.value = autoRedirectOnQuery ? "Redirecting…" : "Loading…";
-
-        // Add a timeout so direct redirects don't hang forever.
-        const controller = new AbortController();
-        const redirectTimeoutId = setTimeout(() => controller.abort(), 20000);
-
-        let result;
-        try {
-          result = await resolveApplicationNumber(epPublicationNumber.value, controller.signal);
-        } finally {
-          clearTimeout(redirectTimeoutId);
-        }
-
-        b210Value = result.value;
-        importedApplicationNumber.value = b210Value || "Not found";
-
-        let formattedNumber = "";
-
-        if (requiredNumber === "EP Publication Number") {
-          formattedNumber = format ? generateFormattedNumber(format, epPublicationNumber.value) : epPublicationNumber.value;
-        } else if (requiredNumber === "EP Application Number") {
-          formattedNumber = format ? generateFormattedNumber(format, b210Value) : b210Value;
-        }
-
-        let finalLink = queryLink;
-        if (finalLink && formattedNumber) {
-          finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
-        }
-
-        if (queryLink) {
-          // If we arrived via a direct URL query (?DEEP1234567), redirect this page to the generated link.
-          if (autoRedirectOnQuery) {
-            window.location.replace(finalLink);
-            return;
-          }
-
-          addLinkTile(code, finalLink, false);
-          if (autoOpenToggle.checked) openLink(finalLink);
-        } else {
-          addLinkTile(code, "No link configured", true);
-        }
-      } catch (e) {
-        console.error(e);
-        importedApplicationNumber.value = "Error";
-        if (e && e.name === "AbortError") {
-          showError("Taking too long", "Fetching the EP application number from EPO timed out. Try again, or open the page normally and click Generate one.");
-        } else {
-          showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='note'>" + (e.message || e) + "</span>");
-        }
+      let rawNumber = "";
+      if (requiredNumber === "EP Publication Number") {
+        rawNumber = resolvedNumbers.publicationNumber || "";
+      } else if (requiredNumber === "EP Application Number") {
+        rawNumber = resolvedNumbers.applicationNumber || "";
       }
+
+      if (!rawNumber) return "";
+      return format ? generateFormattedNumber(format, rawNumber) : rawNumber;
     }
 
     async function generateLinks() {
-      sharedResetUI();
+      if (!sharedResetUI()) return;
 
       try {
+        const payload = await resolvePatentNumbers(epPublicationNumber.value);
+        setResolvedFields(payload);
+
         const codes = Object.keys(territoryLinks).sort();
         const noLinks = [];
-        const requiresAppNumber = hasApplicationNumberTerritory(territoryLinks, codes);
 
-        if (requiresAppNumber) {
-          try {
-            const result = await resolveApplicationNumber(epPublicationNumber.value);
-            b210Value = result.value;
-            importedApplicationNumber.value = b210Value || "Not found";
-          } catch (e) {
-            console.warn("Could not resolve EP application number; continuing with publication-number links only.", e);
-            b210Value = "";
-            importedApplicationNumber.value = "Unavailable";
-            showError(
-              "Application number unavailable",
-              "Could not fetch the EP application number from EPO right now. Publication-number links are still shown; application-number links are marked unavailable."
-            );
-          }
-        } else {
-          importedApplicationNumber.value = "Not required";
-          b210Value = "";
+        if (!resolvedNumbers.publicationNumber && !resolvedNumbers.applicationNumber) {
+          throw new Error("No EP publication or application number was resolved from EPO.");
         }
 
         for (const code of codes) {
           const territory = territoryLinks[code];
           const queryLink = territory.link;
-          const requiredNumber = territory.requiredNumber;
-          const format = territory.format;
-
-          let formattedNumber = "";
-
-          if (requiredNumber === "EP Publication Number") {
-            formattedNumber = format ? generateFormattedNumber(format, epPublicationNumber.value) : epPublicationNumber.value;
-          } else if (requiredNumber === "EP Application Number") {
-            formattedNumber = format ? generateFormattedNumber(format, b210Value) : b210Value;
-          }
+          const formattedNumber = getFormattedNumberForTerritory(territory);
 
           let finalLink = queryLink;
           if (finalLink && formattedNumber) {
             finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
           }
 
-          if (requiredNumber === "EP Application Number" && !b210Value) {
+          if (territory.requiredNumber === "EP Application Number" && !resolvedNumbers.applicationNumber) {
             addLinkTile(code, "Application number unavailable", true);
+            continue;
+          }
+
+          if (territory.requiredNumber === "EP Publication Number" && !resolvedNumbers.publicationNumber) {
+            addLinkTile(code, "Publication number unavailable", true);
             continue;
           }
 
@@ -568,31 +433,97 @@
         }
       } catch (e) {
         console.error(e);
-        importedApplicationNumber.value = "Error";
-        if (e && e.name === "AbortError") {
-          showError("Taking too long", "Fetching the EP application number from EPO timed out. Try again, or open the page normally and click Generate one.");
-        } else {
-          showError("An error occurred", "Check the EP number, or the EPO endpoint. Details: <span class='note'>" + (e.message || e) + "</span>");
-        }
+        showError("Lookup failed", e.message || "Could not resolve the EP number from EPO.");
       }
     }
 
-    btnGenerateAll.addEventListener("click", () => { autoRedirectOnQuery = false; generateLinks(); });
-    btnGenerateOne.addEventListener("click", () => { autoRedirectOnQuery = false; generateSpecificLink(); });
-    btnClear.addEventListener("click", clearResults);
+    async function generateSpecificLink() {
+      if (!sharedResetUI()) return;
 
-    epPublicationNumber.addEventListener("keydown", (e) => { if (e.key === "Enter") { autoRedirectOnQuery = false; generateLinks(); } });
-    territoryCodeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { autoRedirectOnQuery = false; generateSpecificLink(); } });
+      try {
+        const code = (territoryCodeInput.value || "").toUpperCase().trim();
+        const territory = territoryLinks[code];
+
+        if (!territory) {
+          showError("Invalid territory", "Territory code not recognised: <strong>" + code + "</strong>");
+          importedApplicationNumber.value = "";
+          resolvedPublicationNumber.value = "";
+          return;
+        }
+
+        importedApplicationNumber.value = autoRedirectOnQuery ? "Loading…" : "Loading…";
+        resolvedPublicationNumber.value = autoRedirectOnQuery ? "Loading…" : "Loading…";
+
+        const controller = new AbortController();
+        const redirectTimeoutId = setTimeout(() => controller.abort(), 20000);
+
+        let payload;
+        try {
+          payload = await resolvePatentNumbers(epPublicationNumber.value, controller.signal);
+        } finally {
+          clearTimeout(redirectTimeoutId);
+        }
+
+        setResolvedFields(payload);
+
+        const formattedNumber = getFormattedNumberForTerritory(territory);
+
+        if (!formattedNumber) {
+          const missingLabel = territory.requiredNumber === "EP Application Number"
+            ? "Application number unavailable"
+            : "Publication number unavailable";
+
+          if (autoRedirectOnQuery) return;
+          addLinkTile(code, missingLabel, true);
+          return;
+        }
+
+        let finalLink = territory.link;
+        if (finalLink && formattedNumber) {
+          finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
+        }
+
+        if (!territory.link) {
+          addLinkTile(code, "No link configured", true);
+          return;
+        }
+
+        if (autoRedirectOnQuery) {
+          window.location.replace(finalLink);
+          return;
+        }
+
+        addLinkTile(code, finalLink, false);
+        if (autoOpenToggle.checked) openLink(finalLink);
+      } catch (e) {
+        console.error(e);
+
+        if (autoRedirectOnQuery) {
+          showError("Lookup failed", e.message || "Could not resolve the EP number from EPO.");
+          return;
+        }
+
+        showError("Lookup failed", e.message || "Could not resolve the EP number from EPO.");
+      }
+    }
+
+    btnGenerateAll.addEventListener("click", generateLinks);
+    btnGenerateOne.addEventListener("click", generateSpecificLink);
+    btnClear.addEventListener("click", () => {
+      epPublicationNumber.value = "";
+      territoryCodeInput.value = "";
+      autoRedirectOnQuery = false;
+      clearResults();
+    });
 
     window.addEventListener("DOMContentLoaded", async () => {
       const ok = await loadTerritoryLinksFromSupabase();
       if (!ok) {
-        showError("Config load failed",
-          "Could not load territory links from Supabase. Check <span class='kbd'>SUPABASE_URL</span> and <span class='kbd'>SUPABASE_ANON_KEY</span>, and ensure your RLS policy allows SELECT.");
+        showError("Could not load data", "Failed to load territory configuration from Supabase.");
         return;
       }
       prefillInputBoxes();
     });
-  </script>
+</script>
 </body>
 </html>
