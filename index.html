@@ -240,9 +240,34 @@
     function XXXXXXX(publicationNumber) { return publicationNumber.substring(2); }
     function EPXXXXXXX(publicationNumber) { return publicationNumber; }
 
+    const FORMATTERS = {
+      EPXXXXXXXX_Y,
+      XXXXXXXX_Y,
+      XXXXXXXXY,
+      EPXXXXXXXX,
+      EXXXXXXXX,
+      EXXXXXXXXY,
+      XXXXXXX,
+      EPXXXXXXX
+    };
+
+    function normalizeFormatName(format) {
+      return (format || "")
+        .trim()
+        .replace(/\(\s*\)$/, "");
+    }
+
+
     function generateFormattedNumber(format, number) {
-      const fn = window[format];
-      return (typeof fn === "function") ? fn(number) : number;
+      const formatName = normalizeFormatName(format);
+      const fn = FORMATTERS[formatName];
+
+      if (typeof fn !== "function") {
+        console.warn("Unknown number format:", format);
+        return number;
+      }
+
+      return fn(number);
     }
 
     function openLink(link) {
