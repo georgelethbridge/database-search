@@ -241,35 +241,55 @@
     function EPXXXXXXX(publicationNumber) { return publicationNumber; }
 
     const FORMATTERS = {
-      EPXXXXXXXX_Y,
-      XXXXXXXX_Y,
-      XXXXXXXXY,
-      EPXXXXXXXX,
-      EXXXXXXXX,
-      EXXXXXXXXY,
-      XXXXXXX,
-      EPXXXXXXX
+      EPXXXXXXXX_Y: (number) => "EP" + stripEpPrefix(number),
+      XXXXXXXX_Y: (number) => stripEpPrefix(number),
+      XXXXXXXXY: (number) => stripEpPrefix(number).replace(".", ""),
+      XXXXXXXXX: (number) => stripEpPrefix(number).replace(".", ""),
+      EPXXXXXXXX: (number) => {
+        const base = stripEpPrefix(number).split(".")[0];
+        return "EP" + base;
+      },
+      EXXXXXXXX: (number) => {
+        const base = stripEpPrefix(number).split(".")[0];
+        return "E" + base;
+      },
+      EXXXXXXXXY: (number) => "E" + stripEpPrefix(number).replace(".", ""),
+      XXXXXXX: (number) => stripEpPrefix(number),
+      EPXXXXXXX: (number) => {
+        const cleaned = String(number || "").toUpperCase().trim();
+        return cleaned.startsWith("EP") ? cleaned : "EP" + cleaned;
+      }
     };
 
-    function normalizeFormatName(format) {
-      return (format || "")
-        .trim()
-        .replace(/\(\s*\)$/, "");
+    function stripEpPrefix(number) {
+      return String(number || "").toUpperCase().trim().replace(/^EP/, "");
+    }
+
+    function normalizeFormatKey(format) {
+      return String(format || "").trim().replace(/[\s-]+/g, "_").toUpperCase();
     }
 
 
     function generateFormattedNumber(format, number) {
-      const formatName = normalizeFormatName(format);
-      const fn = FORMATTERS[formatName];
-
-      if (typeof fn !== "function") {
-        console.warn("Unknown number format:", format);
-        return number;
+      const key = normalizeFormatKey(format);
+      const fn = FORMATTERS[key];
+    
+      console.log("Formatting number", {
+        originalFormat: format,
+        normalizedFormat: key,
+        inputNumber: number,
+        formatterFound: typeof fn === "function"
+      });
+    
+      if (typeof fn === "function") {
+        const output = fn(number);
+        console.log("Formatted output", output);
+        return output;
       }
-
-      return fn(number);
+    
+      console.warn("Unknown number format from Supabase:", format);
+      return number;
     }
-
     function openLink(link) {
       window.open(link, "_blank", "noopener,noreferrer");
     }
