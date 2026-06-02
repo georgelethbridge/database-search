@@ -119,7 +119,7 @@
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td><input value="${(row.territory_code ?? "")}" data-k="territory_code" style="width:100px" /></td>
-          <td><input value="${(row.link ?? "")}" data-k="link" placeholder="https://...%s" /></td>
+          <td><input value="${(row.link ?? "")}" data-k="link" placeholder="https://...%s" style="width:100%; box-sizing:border-box;"/></td>
           <td>
             <select data-k="required_number">
               <option value=""></option>
@@ -234,7 +234,7 @@
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td><input value="" data-k="territory_code" placeholder="DE" style="width:100px" /></td>
-        <td><input value="" data-k="link" placeholder="https://...%s" /></td>
+        <td><input value="" data-k="link" placeholder="https://...%s" style="width:100%; box-sizing:border-box;" /></td>
         <td>
           <select data-k="required_number">
             <option value=""></option>
