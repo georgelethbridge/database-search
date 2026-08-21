@@ -116,6 +116,21 @@
   }
 
   // ---------------------------------------------------------------
+  // Emoji flag for a territory code. Non-country office codes either map to
+  // the EU flag or have no flag at all (Unicode has none for them).
+  // ---------------------------------------------------------------
+  const FLAG_OVERRIDES = { EP: "\u{1F1EA}\u{1F1FA}", UP: "\u{1F1EA}\u{1F1FA}", EM: "\u{1F1EA}\u{1F1FA}" };
+  const NO_FLAG_CODES = ["OA", "AP", "EA", "GC", "XK"];
+
+  function territoryFlag(code) {
+    const c = (code || "").toUpperCase().trim();
+    if (!/^[A-Z]{2}$/.test(c)) return "";
+    if (FLAG_OVERRIDES[c]) return FLAG_OVERRIDES[c];
+    if (NO_FLAG_CODES.includes(c)) return "";
+    return String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65, 0x1F1E6 + c.charCodeAt(1) - 65);
+  }
+
+  // ---------------------------------------------------------------
   // Shortcut grammar for ?QUERY urls.
   //   ?EP3234567        -> { type: "ep-all", number: "EP3234567" }
   //   ?18752904.5       -> { type: "ep-all", number: "18752904.5" }
@@ -232,6 +247,7 @@
     formatNumber,
     parseShortcut,
     buildSearchLink,
-    groupSearchLinks
+    groupSearchLinks,
+    territoryFlag
   };
 });

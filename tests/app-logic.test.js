@@ -10,7 +10,8 @@ const {
   formatNumber,
   parseShortcut,
   buildSearchLink,
-  groupSearchLinks
+  groupSearchLinks,
+  territoryFlag
 } = require("../app-logic.js");
 
 test("normalizeEpPublicationNumber strips EP prefix and spaces", () => {
@@ -157,6 +158,18 @@ test("groupSearchLinks groups by territory and patent type, sorted by sort_order
   assert.equal(grouped.DE.national.length, 2);
   assert.equal(grouped.DE.national[0].label, "DPMA");
   assert.equal(grouped.DE.national[1].label, "Espacenet");
+});
+
+test("territoryFlag maps countries to emoji flags, EU offices to the EU flag, and skips flagless codes", () => {
+  assert.equal(territoryFlag("DE"), "🇩🇪");
+  assert.equal(territoryFlag("gb"), "🇬🇧");
+  assert.equal(territoryFlag("EP"), "🇪🇺");
+  assert.equal(territoryFlag("UP"), "🇪🇺");
+  assert.equal(territoryFlag("EM"), "🇪🇺");
+  assert.equal(territoryFlag("OA"), "");
+  assert.equal(territoryFlag("GC"), "");
+  assert.equal(territoryFlag(""), "");
+  assert.equal(territoryFlag("123"), "");
 });
 
 test("groupSearchLinks handles regional rows and orders patents before other right types", () => {

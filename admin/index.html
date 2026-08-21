@@ -3,21 +3,22 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Database Search Admin</title>
-  <link rel="stylesheet" href="../styles.css?v=2026-08-21b" />
+  <title>IP Register Search Admin</title>
+  <link rel="stylesheet" href="../styles.css?v=2026-08-21c" />
 </head>
 <body>
-  <div class="container">
+  <div class="container wide">
     <div class="header">
       <div class="brand">
         <div class="logo" aria-hidden="true">IP</div>
         <div>
-          <h1>Database Search</h1>
+          <h1>IP Register Search</h1>
           <div class="sub">Admin</div>
         </div>
       </div>
       <div class="header-right">
         <div class="badge">Table <span class="kbd">search_links</span></div>
+        <button class="btn secondary icon" id="signOutBtn" type="button" style="display:none;">Sign out</button>
       </div>
     </div>
 
@@ -32,7 +33,7 @@
         <div class="card-body">
           <div class="row">
             <button class="btn" id="signInBtn" type="button">Sign in with Google</button>
-            <div class="note" id="authMsg"></div>
+            <div class="note" id="authMsg" role="status"></div>
           </div>
           <div style="height:10px;"></div>
           <div class="note">If sign-in loops, check Supabase URL Configuration redirect URLs.</div>
@@ -43,44 +44,50 @@
         <div class="card-header">
           <div>
             <div class="card-title">Search links</div>
-            <div class="card-hint">A territory can have several rows — e.g. one EP validation link and one national link. "Link template" needs a <span class="kbd">%s</span> placeholder; "Search page" is a plain URL opened when no number is available.</div>
+            <div class="card-hint">A territory can have several rows — e.g. one EP validation link and one national link. <strong>Link template</strong> needs a <span class="kbd">%s</span> placeholder; <strong>Search page</strong> is a plain URL opened when no number is available.</div>
           </div>
           <div class="actions">
             <button class="btn secondary" id="refreshBtn" type="button">Refresh</button>
-            <button class="btn secondary" id="addRowBtn" type="button">Add row</button>
-            <button class="btn danger" id="signOutBtn" type="button">Sign out</button>
+            <button class="btn" id="addRowBtn" type="button">Add row</button>
           </div>
         </div>
         <div class="card-body">
           <div class="alert" id="banner" role="alert"></div>
 
-          <div class="table-wrap" style="margin-top:12px;">
+          <div class="toolbar">
+            <input type="text" id="filterInput" placeholder="Filter by territory, label, or URL…" autocomplete="off" aria-label="Filter rows" />
+            <div class="note" id="rowCount" role="status"></div>
+          </div>
+
+          <div class="table-wrap">
             <table id="tbl">
+              <caption class="visually-hidden">Search link configuration, one row per territory link</caption>
               <thead>
                 <tr>
-                  <th style="width:70px;">Territory</th>
-                  <th style="width:110px;">IP right</th>
-                  <th style="width:100px;">Type</th>
-                  <th style="width:130px;">Label</th>
-                  <th>Link template (%s)</th>
-                  <th>Search page (no number)</th>
-                  <th style="width:170px;">Required number</th>
-                  <th style="width:130px;">Format</th>
-                  <th style="width:60px;">Sort</th>
-                  <th style="width:150px;">Actions</th>
+                  <th scope="col" style="width:92px;">Territory</th>
+                  <th scope="col" style="width:118px;">IP right</th>
+                  <th scope="col" style="width:100px;">Type</th>
+                  <th scope="col" style="width:120px;">Label</th>
+                  <th scope="col" style="min-width:220px;">Link template (%s)</th>
+                  <th scope="col" style="min-width:220px;">Search page (no number)</th>
+                  <th scope="col" style="width:180px;">Required number</th>
+                  <th scope="col" style="width:118px;">Format</th>
+                  <th scope="col" style="width:56px;">Sort</th>
+                  <th scope="col" style="width:132px;"><span class="visually-hidden">Actions</span></th>
                 </tr>
               </thead>
               <tbody></tbody>
             </table>
           </div>
 
-          <div class="note" id="msg" style="margin-top:10px;"></div>
+          <div class="note" id="msg" style="margin-top:10px;" role="status"></div>
         </div>
       </div>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../app-logic.js?v=2026-08-21c"></script>
   <script>
     const SUPABASE_URL = "https://xgbdcwxlpzjggxobcqfr.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_dr_BwE5yA1hXAI7WBO3-wA_yqD_bZmm";
@@ -93,10 +100,16 @@
     const banner = document.getElementById("banner");
     const msg = document.getElementById("msg");
     const tbody = document.querySelector("#tbl tbody");
+    const filterInput = document.getElementById("filterInput");
+    const rowCount = document.getElementById("rowCount");
+    const signOutBtn = document.getElementById("signOutBtn");
+
+    let allRows = [];
 
     function showBanner(html){
       banner.innerHTML = html;
       banner.classList.add("show");
+      banner.scrollIntoView({ block: "nearest" });
     }
     function clearBanner(){
       banner.classList.remove("show");
@@ -111,38 +124,46 @@
     }
 
     function rowHtml(row){
+      const code = escapeAttr(row.territory_code);
+      const forCode = row.territory_code ? " for " + code : "";
+      const flag = EPTerritorySearch.territoryFlag(row.territory_code);
       return `
-        <td><input value="${escapeAttr(row.territory_code)}" data-k="territory_code" placeholder="DE" style="width:60px" /></td>
         <td>
-          <select data-k="right_type">
+          <div class="cell-inline">
+            <span class="flag" aria-hidden="true">${flag}</span>
+            <input value="${code}" data-k="territory_code" placeholder="DE" maxlength="2" class="input-code" aria-label="Territory code${forCode}" />
+          </div>
+        </td>
+        <td>
+          <select data-k="right_type" aria-label="IP right${forCode}">
             <option value="patent">Patent</option>
             <option value="utility_model">Utility model</option>
             <option value="design">Design</option>
           </select>
         </td>
         <td>
-          <select data-k="patent_type">
+          <select data-k="patent_type" aria-label="Patent type${forCode}">
             <option value="ep">EP</option>
             <option value="national">National</option>
             <option value="regional">Regional</option>
           </select>
         </td>
-        <td><input value="${escapeAttr(row.label)}" data-k="label" placeholder="e.g. DPMA" style="width:120px" /></td>
-        <td><input value="${escapeAttr(row.link_template)}" data-k="link_template" placeholder="https://...%s..." /></td>
-        <td><input value="${escapeAttr(row.landing_link)}" data-k="landing_link" placeholder="https://... (no %s)" /></td>
+        <td><input value="${escapeAttr(row.label)}" data-k="label" placeholder="—" aria-label="Label${forCode}" /></td>
+        <td><input value="${escapeAttr(row.link_template)}" data-k="link_template" placeholder="—" aria-label="Link template${forCode}" spellcheck="false" /></td>
+        <td><input value="${escapeAttr(row.landing_link)}" data-k="landing_link" placeholder="—" aria-label="Search page URL${forCode}" spellcheck="false" /></td>
         <td>
-          <select data-k="required_number">
-            <option value="">As entered (national)</option>
+          <select data-k="required_number" aria-label="Required number${forCode}">
+            <option value="">As entered</option>
             <option value="EP Publication Number">EP Publication Number</option>
             <option value="EP Application Number">EP Application Number</option>
           </select>
         </td>
-        <td><input value="${escapeAttr(row.format)}" data-k="format" placeholder="EPXXXXXXX" style="width:120px" /></td>
-        <td><input value="${escapeAttr(row.sort_order ?? 0)}" data-k="sort_order" style="width:50px" /></td>
+        <td><input value="${escapeAttr(row.format)}" data-k="format" placeholder="—" aria-label="Number format${forCode}" spellcheck="false" /></td>
+        <td><input type="number" min="0" value="${escapeAttr(row.sort_order ?? 0)}" data-k="sort_order" aria-label="Sort order${forCode}" /></td>
         <td>
-          <div class="actions">
+          <div class="actions row-actions">
             <button class="btn secondary icon" data-act="save" type="button">Save</button>
-            ${row.id != null ? `<button class="btn danger icon" data-act="delete" type="button">Delete</button>` : ""}
+            ${row.id != null ? `<button class="btn ghost-danger icon" data-act="delete" type="button" aria-label="Delete row${forCode}">Delete</button>` : ""}
           </div>
         </td>
       `;
@@ -166,12 +187,29 @@
 
     function validateRecord(rec){
       if (!rec.territory_code) return "Territory code required";
+      if (!/^[A-Z]{2}$/.test(rec.territory_code)) return "Territory code must be two letters";
       if (rec.link_template && !rec.link_template.includes("%s")) return "Link template must contain %s — use the Search page column for plain URLs";
       if (rec.landing_link && rec.landing_link.includes("%s")) return "Search page URL must not contain %s";
       return null;
     }
 
+    function markDirty(tr){
+      tr.classList.add("dirty");
+      const saveBtn = tr.querySelector('button[data-act="save"]');
+      saveBtn.classList.remove("secondary");
+    }
+
     function wireRow(tr, rowId){
+      for (const el of tr.querySelectorAll("input,select")){
+        el.addEventListener("input", () => markDirty(tr));
+      }
+
+      const codeInput = tr.querySelector('input[data-k="territory_code"]');
+      const flagSpan = tr.querySelector(".flag");
+      codeInput.addEventListener("input", () => {
+        flagSpan.textContent = EPTerritorySearch.territoryFlag(codeInput.value);
+      });
+
       tr.querySelector('button[data-act="save"]').addEventListener("click", async () => {
         clearBanner();
         const rec = readRecord(tr);
@@ -190,11 +228,11 @@
 
         if (error){
           setMsg("");
-          showBanner("<strong>Save failed</strong><div class='note'>" + error.message + "</div>");
+          showBanner("<strong>Save failed</strong><div class='note'>" + escapeAttr(error.message) + "</div>");
           return;
         }
 
-        setMsg("Saved.");
+        setMsg("Saved " + rec.territory_code + ".");
         await render();
       });
 
@@ -214,19 +252,48 @@
 
           if (error){
             setMsg("");
-            showBanner("<strong>Delete failed</strong><div class='note'>" + error.message + "</div>");
+            showBanner("<strong>Delete failed</strong><div class='note'>" + escapeAttr(error.message) + "</div>");
             return;
           }
 
-          setMsg("Deleted.");
+          setMsg("Deleted " + code + ".");
           await render();
         });
       }
     }
 
+    function rowMatchesFilter(row, needle){
+      if (!needle) return true;
+      const haystack = [
+        row.territory_code, row.right_type, row.patent_type, row.label,
+        row.link_template, row.landing_link, row.format
+      ].map(v => (v || "").toLowerCase());
+      return haystack.some(v => v.includes(needle));
+    }
+
+    function renderRows(){
+      tbody.innerHTML = "";
+      const needle = (filterInput.value || "").trim().toLowerCase();
+      const visible = allRows.filter(r => rowMatchesFilter(r, needle));
+
+      for (const row of visible){
+        const tr = document.createElement("tr");
+        tr.innerHTML = rowHtml(row);
+        tr.querySelector('select[data-k="right_type"]').value = row.right_type ?? "patent";
+        tr.querySelector('select[data-k="patent_type"]').value = row.patent_type ?? "ep";
+        tr.querySelector('select[data-k="required_number"]').value = row.required_number ?? "";
+        wireRow(tr, row.id);
+        tbody.appendChild(tr);
+      }
+
+      rowCount.textContent = needle
+        ? visible.length + " of " + allRows.length + " rows"
+        : allRows.length + " rows";
+      setMsg(allRows.length ? "" : "No rows yet.");
+    }
+
     async function render(){
       clearBanner();
-      tbody.innerHTML = "";
       setMsg("Loading…");
 
       const { data, error } = await supabaseClient
@@ -239,21 +306,12 @@
 
       if (error){
         setMsg("");
-        showBanner("<strong>Could not load data</strong><div class='note'>" + error.message + "</div>");
+        showBanner("<strong>Could not load data</strong><div class='note'>" + escapeAttr(error.message) + "</div>");
         return;
       }
 
-      for (const row of data ?? []){
-        const tr = document.createElement("tr");
-        tr.innerHTML = rowHtml(row);
-        tr.querySelector('select[data-k="right_type"]').value = row.right_type ?? "patent";
-        tr.querySelector('select[data-k="patent_type"]').value = row.patent_type ?? "ep";
-        tr.querySelector('select[data-k="required_number"]').value = row.required_number ?? "";
-        wireRow(tr, row.id);
-        tbody.appendChild(tr);
-      }
-
-      setMsg(data?.length ? "" : "No rows yet.");
+      allRows = data ?? [];
+      renderRows();
     }
 
     async function checkSession(){
@@ -263,10 +321,12 @@
       if (session){
         authCard.style.display = "none";
         appCard.style.display = "block";
+        signOutBtn.style.display = "";
         await render();
       } else {
         authCard.style.display = "block";
         appCard.style.display = "none";
+        signOutBtn.style.display = "none";
       }
     }
 
@@ -280,19 +340,25 @@
       });
     });
 
-    document.getElementById("signOutBtn").addEventListener("click", async () => {
+    signOutBtn.addEventListener("click", async () => {
       await supabaseClient.auth.signOut();
       await checkSession();
     });
 
     document.getElementById("refreshBtn").addEventListener("click", render);
+    filterInput.addEventListener("input", renderRows);
 
     document.getElementById("addRowBtn").addEventListener("click", () => {
       clearBanner();
+      filterInput.value = "";
+      renderRows();
+
       const tr = document.createElement("tr");
       tr.innerHTML = rowHtml({ territory_code: "", right_type: "patent", patent_type: "ep", label: "", link_template: "", landing_link: "", required_number: "", format: "", sort_order: 0 });
       wireRow(tr, null);
+      markDirty(tr);
       tbody.prepend(tr);
+      tr.querySelector('input[data-k="territory_code"]').focus();
     });
 
     checkSession();

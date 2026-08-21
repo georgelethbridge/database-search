@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>IP Register Search</title>
-  <link rel="stylesheet" href="./styles.css?v=2026-08-21b" />
+  <link rel="stylesheet" href="./styles.css?v=2026-08-21c" />
 </head>
 <body>
   <div class="container">
@@ -133,7 +133,7 @@
   <div class="toast" id="toast" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./app-logic.js?v=2026-08-21"></script>
+  <script src="./app-logic.js?v=2026-08-21c"></script>
   <script>
     // ---------------------------
     // Supabase configuration
@@ -143,7 +143,7 @@
     const BACKEND_URL = "https://api-ipb9.onrender.com/epo";
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const { parseShortcut, buildSearchLink, groupSearchLinks } = EPTerritorySearch;
+    const { parseShortcut, buildSearchLink, groupSearchLinks, territoryFlag } = EPTerritorySearch;
 
     // UI elements
     const alertsContainer = document.getElementById("alertsContainer");
@@ -304,8 +304,10 @@
         : isLanding ? "Opens the office's search page"
         : escapeHtml(displayUrl(url));
 
+      const flag = territoryFlag(code);
       tile.innerHTML = `
         <div class="link-head">
+          ${flag ? `<span class="flag" aria-hidden="true">${flag}</span>` : ""}
           <span class="link-code">${escapeHtml(code)}</span>
           ${chips.join("")}
         </div>
