@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>EP Territory Search</title>
+  <title>IP Register Search</title>
   <link rel="stylesheet" href="./styles.css?v=2026-08-21" />
 </head>
 <body>
   <div class="container">
     <div class="header">
       <div class="brand">
-        <div class="logo" aria-hidden="true">EP</div>
+        <div class="logo" aria-hidden="true">IP</div>
         <div>
-          <h1>EP Territory Search</h1>
-          <div class="sub">Register links for European and national patents</div>
+          <h1>IP Register Search</h1>
+          <div class="sub">Register links for European, national and regional IP rights</div>
         </div>
       </div>
       <div class="header-right">
@@ -37,7 +37,7 @@
           <div class="form">
             <div class="segmented" role="tablist" aria-label="Patent type">
               <button class="segment active" id="modeEpBtn" type="button" role="tab" aria-selected="true">European patent</button>
-              <button class="segment" id="modeNationalBtn" type="button" role="tab" aria-selected="false">National patent</button>
+              <button class="segment" id="modeNationalBtn" type="button" role="tab" aria-selected="false">National / regional</button>
             </div>
 
             <div id="epFields" class="form" style="gap:14px;">
@@ -75,20 +75,20 @@
             <div id="nationalFields" class="form" style="gap:14px; display:none;">
               <div class="row">
                 <div class="field">
-                  <label for="nationalTerritory">Territory code</label>
-                  <input type="text" id="nationalTerritory" placeholder="DE" autocomplete="off" />
+                  <label for="nationalTerritory">Territory or office code</label>
+                  <input type="text" id="nationalTerritory" placeholder="DE, EM, OA…" autocomplete="off" />
                 </div>
               </div>
 
               <div class="row">
                 <div class="field">
-                  <label for="nationalNumber">National patent number</label>
+                  <label for="nationalNumber">Patent or registration number</label>
                   <input type="text" id="nationalNumber" placeholder="102016123456.7" autocomplete="off" />
                 </div>
                 <button class="btn" id="btnNationalSearch" type="button">Search</button>
               </div>
 
-              <div class="note">The office's own number format is applied automatically. Leave the number empty to open the office's search page.</div>
+              <div class="note">The office's own number format is applied automatically. Leave the number empty to open the office's search page. Utility model and design searches appear alongside patents, marked with a chip.</div>
             </div>
 
             <div class="row">
@@ -223,7 +223,7 @@
       modeNationalBtn.setAttribute("aria-selected", String(!isEp));
       searchHint.textContent = isEp
         ? "Enter an EP publication or application number, then generate links."
-        : "Pick a country and enter its national patent number.";
+        : "Pick a country or regional office and enter its own number.";
       clearError();
     }
 
