@@ -71,12 +71,167 @@
     return false;
   }
 
+  // ---------------------------------------------------------------
+  // Number formatters. Keys match the `format` column in Supabase.
+  // Application numbers arrive as "16789123.4"; publication numbers as "EP3234567".
+  // Inputs are cleaned defensively (case, whitespace, stray EP prefixes) so a
+  // resolved number like "EP16789123.4" still formats correctly.
+  // ---------------------------------------------------------------
+  function cleanNumber(number) {
+    return String(number || "").toUpperCase().trim();
+  }
+
+  function stripEpPrefix(number) {
+    return cleanNumber(number).replace(/^EP/, "");
+  }
+
+  function stripCheckDigit(number) {
+    return number.split(".")[0];
+  }
+
+  const FORMATTERS = {
+    "EPXXXXXXXX_Y": (n) => "EP" + stripEpPrefix(n),
+    "EPXXXXXXXX.Y": (n) => "EP" + stripEpPrefix(n),
+    "XXXXXXXX_Y": (n) => stripEpPrefix(n),
+    "XXXXXXXXY": (n) => stripEpPrefix(n).replace(".", ""),
+    "XXXXXXXXX": (n) => stripEpPrefix(n).replace(".", ""),
+    "EPXXXXXXXX": (n) => "EP" + stripCheckDigit(stripEpPrefix(n)),
+    "EXXXXXXXX": (n) => "E" + stripCheckDigit(stripEpPrefix(n)),
+    "EXXXXXXXXY": (n) => "E" + stripEpPrefix(n).replace(".", ""),
+    "XXXXXXX": (n) => stripEpPrefix(n),
+    "EPXXXXXXX": (n) => {
+      const cleaned = cleanNumber(n);
+      return cleaned.startsWith("EP") ? cleaned : "EP" + cleaned;
+    }
+  };
+
+  function normalizeFormatKey(format) {
+    return String(format || "").trim().replace(/[\s-]+/g, "_").toUpperCase();
+  }
+
+  function formatNumber(format, number) {
+    if (!number) return "";
+    const fn = FORMATTERS[normalizeFormatKey(format)];
+    return typeof fn === "function" ? fn(number) : number;
+  }
+
+  // ---------------------------------------------------------------
+  // Shortcut grammar for ?QUERY urls.
+  //   ?EP3234567        -> { type: "ep-all", number: "EP3234567" }
+  //   ?18752904.5       -> { type: "ep-all", number: "18752904.5" }
+  //   ?DEEP3234567      -> { type: "ep-one", territory: "DE", number: "EP3234567" }
+  //   ?DE102016123456.7 -> { type: "national", territory: "DE", number: "102016123456.7" }
+  //   ?DE               -> { type: "landing", territory: "DE", patentType: "national" }
+  //   ?DEEP             -> { type: "landing", territory: "DE", patentType: "ep" }
+  //   ?EP               -> { type: "landing", territory: "EP", patentType: "ep" }
+  // ---------------------------------------------------------------
+  function parseShortcut(rawQuery) {
+    const q = (rawQuery || "").toUpperCase().trim().replace(/\s+/g, "");
+    if (!q) return null;
+
+    if (/^[A-Z]{2}/.test(q)) {
+      const territory = q.substring(0, 2);
+      const rest = q.substring(2);
+
+      if (territory === "EP") {
+        if (!rest) return { type: "landing", territory: "EP", patentType: "ep" };
+        return { type: "ep-all", number: q };
+      }
+
+      if (!rest) return { type: "landing", territory, patentType: "national" };
+      if (rest === "EP") return { type: "landing", territory, patentType: "ep" };
+      if (rest.startsWith("EP")) return { type: "ep-one", territory, number: rest };
+      return { type: "national", territory, number: rest };
+    }
+
+    if (/^\d/.test(q)) return { type: "ep-all", number: q };
+    return { type: "invalid", raw: q };
+  }
+
+  // ---------------------------------------------------------------
+  // Build the final URL for one search_links row.
+  // context: { publicationNumber, applicationNumber, nationalNumber }
+  // Returns { url, kind } where kind is "direct" | "landing" | "missing-number" | "none".
+  // ---------------------------------------------------------------
+  function buildSearchLink(row, context) {
+    if (!row) return { url: null, kind: "none" };
+
+    let rawNumber = "";
+    if (row.patentType === "national") {
+      rawNumber = (context.nationalNumber || "").trim();
+    } else if (row.requiredNumber === "EP Application Number") {
+      rawNumber = context.applicationNumber || "";
+    } else if (row.requiredNumber === "EP Publication Number") {
+      rawNumber = context.publicationNumber || "";
+    }
+
+    if (row.linkTemplate && rawNumber) {
+      const formatted = formatNumber(row.format, rawNumber);
+      return { url: row.linkTemplate.replace("%s", encodeURIComponent(formatted)), kind: "direct" };
+    }
+    if (row.landingLink) {
+      return { url: row.landingLink, kind: "landing" };
+    }
+    if (row.linkTemplate) {
+      return { url: null, kind: "missing-number" };
+    }
+    return { url: null, kind: "none" };
+  }
+
+  // Group raw Supabase rows into { CODE: { ep: [rows], national: [rows], regional: [rows] } },
+  // each list sorted patents-first, then by sort_order, then label.
+  const RIGHT_TYPE_ORDER = { patent: 0, utility_model: 1, design: 2 };
+
+  function groupSearchLinks(rows) {
+    const grouped = {};
+    for (const raw of rows || []) {
+      const code = (raw.territory_code || "").toUpperCase().trim();
+      if (!code) continue;
+
+      const patentType = raw.patent_type === "national" ? "national"
+        : raw.patent_type === "regional" ? "regional"
+        : "ep";
+
+      const row = {
+        id: raw.id,
+        territoryCode: code,
+        patentType,
+        rightType: RIGHT_TYPE_ORDER[raw.right_type] !== undefined ? raw.right_type : "patent",
+        label: raw.label || null,
+        linkTemplate: raw.link_template || null,
+        landingLink: raw.landing_link || null,
+        requiredNumber: raw.required_number || null,
+        format: raw.format || null,
+        sortOrder: Number.isFinite(raw.sort_order) ? raw.sort_order : 0
+      };
+
+      if (!grouped[code]) grouped[code] = { ep: [], national: [], regional: [] };
+      grouped[code][patentType].push(row);
+    }
+
+    const bySort = (a, b) =>
+      (RIGHT_TYPE_ORDER[a.rightType] - RIGHT_TYPE_ORDER[b.rightType]) ||
+      (a.sortOrder - b.sortOrder) ||
+      (a.label || "").localeCompare(b.label || "");
+    for (const code of Object.keys(grouped)) {
+      grouped[code].ep.sort(bySort);
+      grouped[code].national.sort(bySort);
+      grouped[code].regional.sort(bySort);
+    }
+    return grouped;
+  }
+
   return {
     DEFAULT_KIND_CODES,
+    FORMATTERS,
     normalizeEpPublicationNumber,
     createEpoXmlCandidates,
     buildProxyUrls,
     extractApplicationNumberFromXml,
-    hasApplicationNumberTerritory
+    hasApplicationNumberTerritory,
+    formatNumber,
+    parseShortcut,
+    buildSearchLink,
+    groupSearchLinks
   };
 });

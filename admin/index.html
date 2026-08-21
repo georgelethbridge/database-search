@@ -4,20 +4,20 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Database Search Admin</title>
-  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="../styles.css?v=2026-08-21" />
 </head>
 <body>
   <div class="container">
     <div class="header">
       <div class="brand">
-        <div class="logo" aria-hidden="true"></div>
+        <div class="logo" aria-hidden="true">EP</div>
         <div>
           <h1>Database Search</h1>
           <div class="sub">Admin</div>
         </div>
       </div>
       <div class="header-right">
-        <div class="badge">Table <span class="kbd">territory_links</span></div>
+        <div class="badge">Table <span class="kbd">search_links</span></div>
       </div>
     </div>
 
@@ -26,7 +26,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">Sign in</div>
-            <div class="card-hint">Use Google sign-in to manage territory link templates.</div>
+            <div class="card-hint">Use Google sign-in to manage search link templates.</div>
           </div>
         </div>
         <div class="card-body">
@@ -42,8 +42,8 @@
       <div class="card" id="appCard" style="display:none;">
         <div class="card-header">
           <div>
-            <div class="card-title">Territory links</div>
-            <div class="card-hint">Edit rows and press Save. Territory code is the primary key.</div>
+            <div class="card-title">Search links</div>
+            <div class="card-hint">A territory can have several rows — e.g. one EP validation link and one national link. "Link template" needs a <span class="kbd">%s</span> placeholder; "Search page" is a plain URL opened when no number is available.</div>
           </div>
           <div class="actions">
             <button class="btn secondary" id="refreshBtn" type="button">Refresh</button>
@@ -58,11 +58,16 @@
             <table id="tbl">
               <thead>
                 <tr>
-                  <th style="width:120px;">Territory</th>
-                  <th>Link template</th>
-                  <th style="width:220px;">Required number</th>
-                  <th style="width:180px;">Format</th>
-                  <th style="width:220px;">Actions</th>
+                  <th style="width:70px;">Territory</th>
+                  <th style="width:110px;">IP right</th>
+                  <th style="width:100px;">Type</th>
+                  <th style="width:130px;">Label</th>
+                  <th>Link template (%s)</th>
+                  <th>Search page (no number)</th>
+                  <th style="width:170px;">Required number</th>
+                  <th style="width:130px;">Format</th>
+                  <th style="width:60px;">Sort</th>
+                  <th style="width:150px;">Actions</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -99,88 +104,113 @@
     }
     function setMsg(text){ msg.textContent = text || ""; }
 
-    async function render(){
-      clearBanner();
-      tbody.innerHTML = "";
-      setMsg("Loading…");
+    function escapeAttr(value){
+      return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
 
-      const { data, error } = await supabaseClient
-        .from("territory_links")
-        .select("territory_code, link, required_number, format")
-        .order("territory_code", { ascending: true });
+    function rowHtml(row){
+      return `
+        <td><input value="${escapeAttr(row.territory_code)}" data-k="territory_code" placeholder="DE" style="width:60px" /></td>
+        <td>
+          <select data-k="right_type">
+            <option value="patent">Patent</option>
+            <option value="utility_model">Utility model</option>
+            <option value="design">Design</option>
+          </select>
+        </td>
+        <td>
+          <select data-k="patent_type">
+            <option value="ep">EP</option>
+            <option value="national">National</option>
+            <option value="regional">Regional</option>
+          </select>
+        </td>
+        <td><input value="${escapeAttr(row.label)}" data-k="label" placeholder="e.g. DPMA" style="width:120px" /></td>
+        <td><input value="${escapeAttr(row.link_template)}" data-k="link_template" placeholder="https://...%s..." /></td>
+        <td><input value="${escapeAttr(row.landing_link)}" data-k="landing_link" placeholder="https://... (no %s)" /></td>
+        <td>
+          <select data-k="required_number">
+            <option value="">As entered (national)</option>
+            <option value="EP Publication Number">EP Publication Number</option>
+            <option value="EP Application Number">EP Application Number</option>
+          </select>
+        </td>
+        <td><input value="${escapeAttr(row.format)}" data-k="format" placeholder="EPXXXXXXX" style="width:120px" /></td>
+        <td><input value="${escapeAttr(row.sort_order ?? 0)}" data-k="sort_order" style="width:50px" /></td>
+        <td>
+          <div class="actions">
+            <button class="btn secondary icon" data-act="save" type="button">Save</button>
+            ${row.id != null ? `<button class="btn danger icon" data-act="delete" type="button">Delete</button>` : ""}
+          </div>
+        </td>
+      `;
+    }
 
-      if (error){
-        setMsg("");
-        showBanner("<strong>Could not load data</strong><div class='note'>" + error.message + "</div>");
-        return;
-      }
+    function readRecord(tr){
+      const rec = {};
+      for (const el of tr.querySelectorAll("input,select")) rec[el.dataset.k] = el.value.trim();
 
-      for (const row of data ?? []){
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td><input value="${(row.territory_code ?? "")}" data-k="territory_code" style="width:100px" /></td>
-          <td><input value="${(row.link ?? "")}" data-k="link" placeholder="https://...%s" style="width:100%; box-sizing:border-box;"/></td>
-          <td>
-            <select data-k="required_number">
-              <option value=""></option>
-              <option value="EP Publication Number">EP Publication Number</option>
-              <option value="EP Application Number">EP Application Number</option>
-            </select>
-          </td>
-          <td><input value="${(row.format ?? "")}" data-k="format" placeholder="EPXXXXXXX" style="width:160px" /></td>
-          <td>
-            <div class="actions">
-              <button class="btn secondary" data-act="save" type="button">Save</button>
-              <button class="btn danger" data-act="delete" type="button">Delete</button>
-            </div>
-          </td>
-        `;
+      rec.territory_code = (rec.territory_code || "").toUpperCase();
+      rec.right_type = ["utility_model", "design"].includes(rec.right_type) ? rec.right_type : "patent";
+      rec.patent_type = ["national", "regional"].includes(rec.patent_type) ? rec.patent_type : "ep";
+      rec.label = rec.label || null;
+      rec.link_template = rec.link_template || null;
+      rec.landing_link = rec.landing_link || null;
+      rec.required_number = rec.required_number || null;
+      rec.format = rec.format || null;
+      rec.sort_order = Number.parseInt(rec.sort_order, 10) || 0;
+      return rec;
+    }
 
-        tr.querySelector('select[data-k="required_number"]').value = row.required_number ?? "";
+    function validateRecord(rec){
+      if (!rec.territory_code) return "Territory code required";
+      if (rec.link_template && !rec.link_template.includes("%s")) return "Link template must contain %s — use the Search page column for plain URLs";
+      if (rec.landing_link && rec.landing_link.includes("%s")) return "Search page URL must not contain %s";
+      return null;
+    }
 
-        tr.querySelector('button[data-act="save"]').addEventListener("click", async () => {
-          clearBanner();
-          const inputs = tr.querySelectorAll("input,select");
-          const rec = {};
-          for (const el of inputs) rec[el.dataset.k] = el.value.trim();
+    function wireRow(tr, rowId){
+      tr.querySelector('button[data-act="save"]').addEventListener("click", async () => {
+        clearBanner();
+        const rec = readRecord(tr);
 
-          rec.territory_code = (rec.territory_code || "").toUpperCase();
-          rec.required_number = rec.required_number || null;
-          rec.format = rec.format || null;
-          rec.link = rec.link || null;
+        const problem = validateRecord(rec);
+        if (problem){
+          showBanner("<strong>" + problem + "</strong>");
+          return;
+        }
 
-          if (!rec.territory_code){
-            showBanner("<strong>Territory code required</strong>");
-            return;
-          }
+        setMsg("Saving…");
+        const query = rowId != null
+          ? supabaseClient.from("search_links").update(rec).eq("id", rowId)
+          : supabaseClient.from("search_links").insert(rec);
+        const { error } = await query;
 
-          setMsg("Saving…");
-          const { error } = await supabaseClient
-            .from("territory_links")
-            .upsert(rec, { onConflict: "territory_code" });
+        if (error){
+          setMsg("");
+          showBanner("<strong>Save failed</strong><div class='note'>" + error.message + "</div>");
+          return;
+        }
 
-          if (error){
-            setMsg("");
-            showBanner("<strong>Save failed</strong><div class='note'>" + error.message + "</div>");
-            return;
-          }
+        setMsg("Saved.");
+        await render();
+      });
 
-          setMsg("Saved.");
-          await render();
-        });
-
-        tr.querySelector('button[data-act="delete"]').addEventListener("click", async () => {
+      const deleteBtn = tr.querySelector('button[data-act="delete"]');
+      if (deleteBtn){
+        deleteBtn.addEventListener("click", async () => {
           clearBanner();
           const code = (tr.querySelector('input[data-k="territory_code"]').value || "").trim().toUpperCase();
-          if (!code) return;
 
-          if (!confirm("Delete " + code + "?")) return;
+          if (!confirm("Delete this row (" + code + ")?")) return;
 
           setMsg("Deleting…");
           const { error } = await supabaseClient
-            .from("territory_links")
+            .from("search_links")
             .delete()
-            .eq("territory_code", code);
+            .eq("id", rowId);
 
           if (error){
             setMsg("");
@@ -191,7 +221,35 @@
           setMsg("Deleted.");
           await render();
         });
+      }
+    }
 
+    async function render(){
+      clearBanner();
+      tbody.innerHTML = "";
+      setMsg("Loading…");
+
+      const { data, error } = await supabaseClient
+        .from("search_links")
+        .select("id, territory_code, right_type, patent_type, label, link_template, landing_link, required_number, format, sort_order")
+        .order("territory_code", { ascending: true })
+        .order("right_type", { ascending: true })
+        .order("patent_type", { ascending: true })
+        .order("sort_order", { ascending: true });
+
+      if (error){
+        setMsg("");
+        showBanner("<strong>Could not load data</strong><div class='note'>" + error.message + "</div>");
+        return;
+      }
+
+      for (const row of data ?? []){
+        const tr = document.createElement("tr");
+        tr.innerHTML = rowHtml(row);
+        tr.querySelector('select[data-k="right_type"]').value = row.right_type ?? "patent";
+        tr.querySelector('select[data-k="patent_type"]').value = row.patent_type ?? "ep";
+        tr.querySelector('select[data-k="required_number"]').value = row.required_number ?? "";
+        wireRow(tr, row.id);
         tbody.appendChild(tr);
       }
 
@@ -232,55 +290,9 @@
     document.getElementById("addRowBtn").addEventListener("click", () => {
       clearBanner();
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td><input value="" data-k="territory_code" placeholder="DE" style="width:100px" /></td>
-        <td><input value="" data-k="link" placeholder="https://...%s" style="width:100%; box-sizing:border-box;" /></td>
-        <td>
-          <select data-k="required_number">
-            <option value=""></option>
-            <option value="EP Publication Number">EP Publication Number</option>
-            <option value="EP Application Number">EP Application Number</option>
-          </select>
-        </td>
-        <td><input value="" data-k="format" placeholder="EPXXXXXXX" style="width:160px" /></td>
-        <td>
-          <div class="actions">
-            <button class="btn secondary" data-act="save" type="button">Save</button>
-          </div>
-        </td>
-      `;
+      tr.innerHTML = rowHtml({ territory_code: "", right_type: "patent", patent_type: "ep", label: "", link_template: "", landing_link: "", required_number: "", format: "", sort_order: 0 });
+      wireRow(tr, null);
       tbody.prepend(tr);
-
-      tr.querySelector('button[data-act="save"]').addEventListener("click", async () => {
-        clearBanner();
-        const inputs = tr.querySelectorAll("input,select");
-        const rec = {};
-        for (const el of inputs) rec[el.dataset.k] = el.value.trim();
-
-        rec.territory_code = (rec.territory_code || "").toUpperCase();
-        rec.required_number = rec.required_number || null;
-        rec.format = rec.format || null;
-        rec.link = rec.link || null;
-
-        if (!rec.territory_code){
-          showBanner("<strong>Territory code required</strong>");
-          return;
-        }
-
-        setMsg("Saving…");
-        const { error } = await supabaseClient
-          .from("territory_links")
-          .upsert(rec, { onConflict: "territory_code" });
-
-        if (error){
-          setMsg("");
-          showBanner("<strong>Save failed</strong><div class='note'>" + error.message + "</div>");
-          return;
-        }
-
-        setMsg("Saved.");
-        await render();
-      });
     });
 
     checkSession();

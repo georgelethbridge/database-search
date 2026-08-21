@@ -4,20 +4,24 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>EP Territory Search</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=2026-08-21" />
 </head>
 <body>
   <div class="container">
     <div class="header">
       <div class="brand">
-        <div class="logo" aria-hidden="true"></div>
+        <div class="logo" aria-hidden="true">EP</div>
         <div>
           <h1>EP Territory Search</h1>
-          <div class="sub">Generate fast register links for territories</div>
+          <div class="sub">Register links for European and national patents</div>
         </div>
       </div>
       <div class="header-right">
-        <div class="badge">Tip <span class="kbd">?DEEP1234567</span></div>
+        <div class="badge">Shortcuts
+          <span class="kbd">?DEEP1234567</span>
+          <span class="kbd">?DE1234567</span>
+          <span class="kbd">?DE</span>
+        </div>
       </div>
     </div>
 
@@ -26,39 +30,65 @@
         <div class="card-header">
           <div>
             <div class="card-title">Search</div>
-            <div class="card-hint">Enter an EP publication or application number, then generate links.</div>
+            <div class="card-hint" id="searchHint">Enter an EP publication or application number, then generate links.</div>
           </div>
         </div>
         <div class="card-body">
           <div class="form">
-            <div class="row">
-              <div class="field">
-                <label for="epPublicationNumber">EP Publication or Application Number</label>
-                <input type="text" id="epPublicationNumber" placeholder="EP1234567 or EP18752904.5" autocomplete="off" />
-              </div>
-              <button class="btn" id="btnGenerateAll" type="button">Generate all</button>
+            <div class="segmented" role="tablist" aria-label="Patent type">
+              <button class="segment active" id="modeEpBtn" type="button" role="tab" aria-selected="true">European patent</button>
+              <button class="segment" id="modeNationalBtn" type="button" role="tab" aria-selected="false">National patent</button>
             </div>
 
-            <div class="row">
-              <div class="field">
-                <label for="territoryCode">Territory Code</label>
-                <input type="text" id="territoryCode" placeholder="DE" autocomplete="off" />
+            <div id="epFields" class="form" style="gap:14px;">
+              <div class="row">
+                <div class="field">
+                  <label for="epPublicationNumber">EP publication or application number</label>
+                  <input type="text" id="epPublicationNumber" placeholder="EP1234567 or 18752904.5" autocomplete="off" />
+                </div>
+                <button class="btn" id="btnGenerateAll" type="button">Generate all</button>
               </div>
-              <button class="btn secondary" id="btnGenerateOne" type="button">Generate one</button>
+
+              <div class="row">
+                <div class="field">
+                  <label for="territoryCode">Territory code</label>
+                  <input type="text" id="territoryCode" placeholder="DE" autocomplete="off" />
+                </div>
+                <button class="btn secondary" id="btnGenerateOne" type="button">Generate one</button>
+              </div>
+
+              <div class="row">
+                <div class="field full">
+                  <label for="resolvedPublicationNumber">Resolved EP publication number</label>
+                  <input type="text" id="resolvedPublicationNumber" readonly placeholder="Will load from EPO" />
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="field full">
+                  <label for="importedApplicationNumber">Resolved EP application number</label>
+                  <input type="text" id="importedApplicationNumber" readonly placeholder="Will load from EPO" />
+                </div>
+              </div>
             </div>
 
-            <div class="row">
-              <div class="field full">
-                <label for="resolvedPublicationNumber">Resolved EP Publication Number</label>
-                <input type="text" id="resolvedPublicationNumber" readonly placeholder="Will load from EPO…" />
+            <div id="nationalFields" class="form" style="gap:14px; display:none;">
+              <div class="row">
+                <div class="field">
+                  <label for="nationalTerritory">Territory code</label>
+                  <input type="text" id="nationalTerritory" placeholder="DE" autocomplete="off" />
+                </div>
               </div>
-            </div>
 
-            <div class="row">
-              <div class="field full">
-                <label for="importedApplicationNumber">Resolved EP Application Number</label>
-                <input type="text" id="importedApplicationNumber" readonly placeholder="Will load from EPO…" />
+              <div class="row">
+                <div class="field">
+                  <label for="nationalNumber">National patent number</label>
+                  <input type="text" id="nationalNumber" placeholder="102016123456.7" autocomplete="off" />
+                </div>
+                <button class="btn" id="btnNationalSearch" type="button">Search</button>
               </div>
+
+              <div class="note">The office's own number format is applied automatically. Leave the number empty to open the office's search page.</div>
             </div>
 
             <div class="row">
@@ -81,7 +111,7 @@
       <div class="card results" id="resultsCard">
         <div class="card-header">
           <div>
-            <div class="card-title">Results</div>
+            <div class="card-title" id="resultsTitle">Results</div>
             <div class="card-hint">Click a territory to open. Use the copy icon to copy the link.</div>
           </div>
           <button class="btn secondary icon" id="btnClear" type="button" title="Clear results">Clear</button>
@@ -103,7 +133,7 @@
   <div class="toast" id="toast" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./app-logic.js?v=2026-04-08"></script>
+  <script src="./app-logic.js?v=2026-08-21"></script>
   <script>
     // ---------------------------
     // Supabase configuration
@@ -113,6 +143,8 @@
     const BACKEND_URL = "https://api-ipb9.onrender.com/epo";
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    const { parseShortcut, buildSearchLink, groupSearchLinks } = EPTerritorySearch;
+
     // UI elements
     const alertsContainer = document.getElementById("alertsContainer");
     const alertsSection = document.getElementById("alertsSection");
@@ -120,25 +152,36 @@
 
     const linksGrid = document.getElementById("linksGrid");
     const resultsCard = document.getElementById("resultsCard");
+    const resultsTitle = document.getElementById("resultsTitle");
     const noLinksContainer = document.getElementById("noLinksContainer");
     const noLinksDetails = document.getElementById("noLinksDetails");
+
+    const searchHint = document.getElementById("searchHint");
+    const epFields = document.getElementById("epFields");
+    const nationalFields = document.getElementById("nationalFields");
+    const modeEpBtn = document.getElementById("modeEpBtn");
+    const modeNationalBtn = document.getElementById("modeNationalBtn");
 
     const resolvedPublicationNumber = document.getElementById("resolvedPublicationNumber");
     const importedApplicationNumber = document.getElementById("importedApplicationNumber");
     const epPublicationNumber = document.getElementById("epPublicationNumber");
     const territoryCodeInput = document.getElementById("territoryCode");
+    const nationalTerritoryInput = document.getElementById("nationalTerritory");
+    const nationalNumberInput = document.getElementById("nationalNumber");
     const autoOpenToggle = document.getElementById("autoOpenToggle");
 
     const btnGenerateAll = document.getElementById("btnGenerateAll");
     const btnGenerateOne = document.getElementById("btnGenerateOne");
+    const btnNationalSearch = document.getElementById("btnNationalSearch");
     const btnClear = document.getElementById("btnClear");
 
     const toast = document.getElementById("toast");
 
     // Data
-    let territoryLinks = {};
+    let searchLinks = {}; // { CODE: { ep: [rows], national: [rows] } }
     let resolvedNumbers = { publicationNumber: "", applicationNumber: "", inputType: "" };
-    let autoRedirectOnQuery = false; // true when URL is like ?DEEP1234567
+    let autoRedirectOnQuery = false; // true when arriving via a ?QUERY shortcut
+    let mode = "ep";
 
     function showToast(text) {
       toast.textContent = text;
@@ -162,9 +205,25 @@
       noLinksContainer.innerHTML = "";
       noLinksDetails.style.display = "none";
       resultsCard.classList.remove("show");
+      resultsTitle.textContent = "Results";
       resolvedPublicationNumber.value = "";
       importedApplicationNumber.value = "";
       resolvedNumbers = { publicationNumber: "", applicationNumber: "", inputType: "" };
+      clearError();
+    }
+
+    function setMode(nextMode) {
+      mode = nextMode === "national" ? "national" : "ep";
+      const isEp = mode === "ep";
+      epFields.style.display = isEp ? "" : "none";
+      nationalFields.style.display = isEp ? "none" : "";
+      modeEpBtn.classList.toggle("active", isEp);
+      modeNationalBtn.classList.toggle("active", !isEp);
+      modeEpBtn.setAttribute("aria-selected", String(isEp));
+      modeNationalBtn.setAttribute("aria-selected", String(!isEp));
+      searchHint.textContent = isEp
+        ? "Enter an EP publication or application number, then generate links."
+        : "Pick a country and enter its national patent number.";
       clearError();
     }
 
@@ -174,122 +233,20 @@
       return results === null ? null : decodeURIComponent(results[1].replace(/\+/g, " "));
     }
 
-    function prefillInputBoxes() {
-      const rawQuery = getQueryParameter();
-      if (rawQuery === null) return;
-
-      const query = rawQuery.toUpperCase();
-      const territoryCode = query.substring(0, 2);
-
-      if (territoryCode in territoryLinks) {
-        if (query.substring(2, 4) === "EP") {
-          autoRedirectOnQuery = true;
-          territoryCodeInput.value = territoryCode;
-          epPublicationNumber.value = query.substring(2);
-          generateSpecificLink();
-        } else {
-          autoRedirectOnQuery = false;
-          territoryCodeInput.value = "";
-          epPublicationNumber.value = query.substring();
-          generateLinks();
-        }
-      } else {
-        showError("Invalid query", "Territory code not recognised: <strong>" + territoryCode + "</strong>");
-      }
-    }
-
-    async function loadTerritoryLinksFromSupabase() {
+    async function loadSearchLinksFromSupabase() {
       const { data, error } = await supabaseClient
-        .from("territory_links")
-        .select("territory_code, link, required_number, format");
+        .from("search_links")
+        .select("id, territory_code, right_type, patent_type, label, link_template, landing_link, required_number, format, sort_order");
 
       if (error) {
         console.error(error);
         return false;
       }
 
-      territoryLinks = {};
-      for (const row of data ?? []) {
-        const code = (row.territory_code || "").toUpperCase().trim();
-        if (!code) continue;
-
-        territoryLinks[code] = {
-          link: row.link ?? null,
-          requiredNumber: row.required_number ?? null,
-          format: row.format ?? null
-        };
-      }
+      searchLinks = groupSearchLinks(data ?? []);
       return true;
     }
 
-    // Formatting helpers
-    function EPXXXXXXXX_Y(applicationNumber) { return "EP" + applicationNumber; }
-    function XXXXXXXX_Y(applicationNumber) { return applicationNumber; }
-    function XXXXXXXXY(applicationNumber) { return applicationNumber.replace(".", ""); }
-    function EPXXXXXXXX(applicationNumber) {
-      const decimalIndex = applicationNumber.indexOf(".");
-      const base = decimalIndex !== -1 ? applicationNumber.substring(0, decimalIndex) : applicationNumber;
-      return "EP" + base;
-    }
-    function EXXXXXXXX(applicationNumber) {
-      const decimalIndex = applicationNumber.indexOf(".");
-      const base = decimalIndex !== -1 ? applicationNumber.substring(0, decimalIndex) : applicationNumber;
-      return "E" + base;
-    }
-    function EXXXXXXXXY(applicationNumber) { return "E" + applicationNumber.replace(".", ""); }
-    function XXXXXXX(publicationNumber) { return publicationNumber.substring(2); }
-    function EPXXXXXXX(publicationNumber) { return publicationNumber; }
-
-    const FORMATTERS = {
-      EPXXXXXXXX_Y: (number) => "EP" + stripEpPrefix(number),
-      XXXXXXXX_Y: (number) => stripEpPrefix(number),
-      XXXXXXXXY: (number) => stripEpPrefix(number).replace(".", ""),
-      XXXXXXXXX: (number) => stripEpPrefix(number).replace(".", ""),
-      EPXXXXXXXX: (number) => {
-        const base = stripEpPrefix(number).split(".")[0];
-        return "EP" + base;
-      },
-      EXXXXXXXX: (number) => {
-        const base = stripEpPrefix(number).split(".")[0];
-        return "E" + base;
-      },
-      EXXXXXXXXY: (number) => "E" + stripEpPrefix(number).replace(".", ""),
-      XXXXXXX: (number) => stripEpPrefix(number),
-      EPXXXXXXX: (number) => {
-        const cleaned = String(number || "").toUpperCase().trim();
-        return cleaned.startsWith("EP") ? cleaned : "EP" + cleaned;
-      }
-    };
-
-    function stripEpPrefix(number) {
-      return String(number || "").toUpperCase().trim().replace(/^EP/, "");
-    }
-
-    function normalizeFormatKey(format) {
-      return String(format || "").trim().replace(/[\s-]+/g, "_").toUpperCase();
-    }
-
-
-    function generateFormattedNumber(format, number) {
-      const key = normalizeFormatKey(format);
-      const fn = FORMATTERS[key];
-    
-      console.log("Formatting number", {
-        originalFormat: format,
-        normalizedFormat: key,
-        inputNumber: number,
-        formatterFound: typeof fn === "function"
-      });
-    
-      if (typeof fn === "function") {
-        const output = fn(number);
-        console.log("Formatted output", output);
-        return output;
-      }
-    
-      console.warn("Unknown number format from Supabase:", format);
-      return number;
-    }
     function openLink(link) {
       window.open(link, "_blank", "noopener,noreferrer");
     }
@@ -318,27 +275,52 @@
       </svg>
     `;
 
-    function addLinkTile(code, finalLink, isDisabled=false) {
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function displayUrl(url) {
+      return (url || "").replace(/^https?:\/\//i, "");
+    }
+
+    // opts: { code, url, label, kind }  kind: "direct" | "landing" | "disabled"
+    // For "disabled", url holds the reason text instead of a link.
+    function addLinkTile(opts) {
+      const { code, url, label, kind } = opts;
+      const isDisabled = kind === "disabled";
+      const isLanding = kind === "landing";
+
       const tile = document.createElement("div");
-      tile.className = "link-tile" + (isDisabled ? " disabled" : "");
+      tile.className = "link-tile" + (isDisabled ? " disabled" : "") + (isLanding ? " landing" : "");
+
+      const chips = [];
+      if (label) chips.push(`<span class="chip">${escapeHtml(label)}</span>`);
+      if (isLanding) chips.push(`<span class="chip landing-chip">Search page</span>`);
+
+      const sub = isDisabled ? escapeHtml(url)
+        : isLanding ? "Opens the office's search page"
+        : escapeHtml(displayUrl(url));
+
       tile.innerHTML = `
-        <div class="link-code">${code}</div>
-        <div class="link-sub">${finalLink || "No link"}</div>
+        <div class="link-head">
+          <span class="link-code">${escapeHtml(code)}</span>
+          ${chips.join("")}
+        </div>
+        <div class="link-sub" title="${isDisabled ? "" : escapeHtml(url)}">${sub}</div>
         ${isDisabled ? "" : `<div class="copy-btn" title="Copy link">${COPY_SVG}</div>`}
       `;
 
       if (!isDisabled) {
         tile.addEventListener("click", (e) => {
-          const isCopy = e.target.closest(".copy-btn");
-          if (isCopy) return;
-          openLink(finalLink);
+          if (e.target.closest(".copy-btn")) return;
+          openLink(url);
         });
-
-        const copyBtn = tile.querySelector(".copy-btn");
-        copyBtn.addEventListener("click", (e) => {
+        tile.querySelector(".copy-btn").addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          copyToClipboard(finalLink);
+          copyToClipboard(url);
         });
       }
 
@@ -399,82 +381,76 @@
       importedApplicationNumber.value = resolvedNumbers.applicationNumber || "Unavailable";
     }
 
-    function sharedResetUI() {
+    function epContext() {
+      return {
+        publicationNumber: resolvedNumbers.publicationNumber,
+        applicationNumber: resolvedNumbers.applicationNumber
+      };
+    }
+
+    function missingNumberLabel(row) {
+      return row.requiredNumber === "EP Application Number"
+        ? "Application number unavailable"
+        : "Publication number unavailable";
+    }
+
+    function tileLabel(row) {
+      const typeName = row.rightType === "utility_model" ? "Utility model"
+        : row.rightType === "design" ? "Design"
+        : null;
+      if (typeName && row.label) return typeName + " · " + row.label;
+      return row.label || typeName;
+    }
+
+    // ---------------------------
+    // EP mode
+    // ---------------------------
+    async function generateLinks() {
       clearResults();
 
       const normalized = normalizeLookupInput(epPublicationNumber.value);
       epPublicationNumber.value = normalized;
-
       if (!normalized) {
         showError("Missing number", "Enter an EP publication or application number first.");
-        return false;
+        return;
       }
-
       resultsCard.classList.add("show");
-      return true;
-    }
-
-    function getFormattedNumberForTerritory(territory) {
-      if (!territory) return "";
-
-      const requiredNumber = territory.requiredNumber;
-      const format = territory.format;
-
-      let rawNumber = "";
-      if (requiredNumber === "EP Publication Number") {
-        rawNumber = resolvedNumbers.publicationNumber || "";
-      } else if (requiredNumber === "EP Application Number") {
-        rawNumber = resolvedNumbers.applicationNumber || "";
-      }
-
-      if (!rawNumber) return "";
-      return format ? generateFormattedNumber(format, rawNumber) : rawNumber;
-    }
-
-    async function generateLinks() {
-      if (!sharedResetUI()) return;
 
       try {
-        const payload = await resolvePatentNumbers(epPublicationNumber.value);
+        const payload = await resolvePatentNumbers(normalized);
         setResolvedFields(payload);
-
-        const codes = Object.keys(territoryLinks).sort();
-        const noLinks = [];
 
         if (!resolvedNumbers.publicationNumber && !resolvedNumbers.applicationNumber) {
           throw new Error("No EP publication or application number was resolved from EPO.");
         }
 
+        const codes = Object.keys(searchLinks).sort();
+        const noLinks = [];
+
         for (const code of codes) {
-          const territory = territoryLinks[code];
-          const queryLink = territory.link;
-          const formattedNumber = getFormattedNumberForTerritory(territory);
+          const rows = searchLinks[code].ep;
+          if (!rows.length) continue;
 
-          let finalLink = queryLink;
-          if (finalLink && formattedNumber) {
-            finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
+          let added = false;
+          for (const row of rows) {
+            const built = buildSearchLink(row, epContext());
+            if (built.kind === "direct") {
+              addLinkTile({ code, url: built.url, label: tileLabel(row), kind: "direct" });
+              added = true;
+            } else if (built.kind === "landing") {
+              addLinkTile({ code, url: built.url, label: tileLabel(row), kind: "landing" });
+              added = true;
+            } else if (built.kind === "missing-number") {
+              addLinkTile({ code, url: missingNumberLabel(row), label: tileLabel(row), kind: "disabled" });
+              added = true;
+            }
           }
-
-          if (territory.requiredNumber === "EP Application Number" && !resolvedNumbers.applicationNumber) {
-            addLinkTile(code, "Application number unavailable", true);
-            continue;
-          }
-
-          if (territory.requiredNumber === "EP Publication Number" && !resolvedNumbers.publicationNumber) {
-            addLinkTile(code, "Publication number unavailable", true);
-            continue;
-          }
-
-          if (queryLink) {
-            addLinkTile(code, finalLink, false);
-          } else {
-            noLinks.push(code);
-          }
+          if (!added) noLinks.push(code);
         }
 
         if (noLinks.length) {
           noLinksDetails.style.display = "block";
-          noLinksContainer.innerHTML = noLinks.map(c => `<div class="note">${c}: No link configured</div>`).join("");
+          noLinksContainer.innerHTML = noLinks.map(c => `<div class="note">${escapeHtml(c)}: No link configured</div>`).join("");
         }
       } catch (e) {
         console.error(e);
@@ -483,88 +459,266 @@
     }
 
     async function generateSpecificLink() {
-      if (!sharedResetUI()) return;
+      clearResults();
+
+      const normalized = normalizeLookupInput(epPublicationNumber.value);
+      epPublicationNumber.value = normalized;
+      if (!normalized) {
+        showError("Missing number", "Enter an EP publication or application number first.");
+        return;
+      }
+
+      const code = (territoryCodeInput.value || "").toUpperCase().trim();
+      const rows = searchLinks[code]?.ep || [];
+
+      if (!rows.length) {
+        showError("Invalid territory", "No EP links configured for: <strong>" + escapeHtml(code) + "</strong>");
+        return;
+      }
+
+      resultsCard.classList.add("show");
+      resultsTitle.textContent = "Results — " + code;
 
       try {
-        const code = (territoryCodeInput.value || "").toUpperCase().trim();
-        const territory = territoryLinks[code];
-
-        if (!territory) {
-          showError("Invalid territory", "Territory code not recognised: <strong>" + code + "</strong>");
-          importedApplicationNumber.value = "";
-          resolvedPublicationNumber.value = "";
-          return;
-        }
-
-        importedApplicationNumber.value = autoRedirectOnQuery ? "Loading…" : "Loading…";
-        resolvedPublicationNumber.value = autoRedirectOnQuery ? "Loading…" : "Loading…";
+        resolvedPublicationNumber.value = "Loading…";
+        importedApplicationNumber.value = "Loading…";
 
         const controller = new AbortController();
         const redirectTimeoutId = setTimeout(() => controller.abort(), 20000);
 
         let payload;
         try {
-          payload = await resolvePatentNumbers(epPublicationNumber.value, controller.signal);
+          payload = await resolvePatentNumbers(normalized, controller.signal);
         } finally {
           clearTimeout(redirectTimeoutId);
         }
 
         setResolvedFields(payload);
 
-        const formattedNumber = getFormattedNumberForTerritory(territory);
+        let firstUrl = null;
+        for (const row of rows) {
+          const built = buildSearchLink(row, epContext());
+          if (built.url && !firstUrl) firstUrl = built.url;
 
-        if (!formattedNumber) {
-          const missingLabel = territory.requiredNumber === "EP Application Number"
-            ? "Application number unavailable"
-            : "Publication number unavailable";
+          if (autoRedirectOnQuery) continue;
 
-          if (autoRedirectOnQuery) return;
-          addLinkTile(code, missingLabel, true);
-          return;
-        }
-
-        let finalLink = territory.link;
-        if (finalLink && formattedNumber) {
-          finalLink = finalLink.replace("%s", encodeURIComponent(formattedNumber));
-        }
-
-        if (!territory.link) {
-          addLinkTile(code, "No link configured", true);
-          return;
+          if (built.kind === "direct") {
+            addLinkTile({ code, url: built.url, label: tileLabel(row), kind: "direct" });
+          } else if (built.kind === "landing") {
+            addLinkTile({ code, url: built.url, label: tileLabel(row), kind: "landing" });
+          } else if (built.kind === "missing-number") {
+            addLinkTile({ code, url: missingNumberLabel(row), label: tileLabel(row), kind: "disabled" });
+          }
         }
 
         if (autoRedirectOnQuery) {
-          window.location.replace(finalLink);
+          if (firstUrl) {
+            window.location.replace(firstUrl);
+          } else {
+            showError("No link available", "Could not build a link for <strong>" + escapeHtml(code) + "</strong>.");
+          }
           return;
         }
 
-        addLinkTile(code, finalLink, false);
-        if (autoOpenToggle.checked) openLink(finalLink);
+        if (!linksGrid.children.length) {
+          addLinkTile({ code, url: "No link configured", kind: "disabled" });
+        }
+
+        if (firstUrl && autoOpenToggle.checked) openLink(firstUrl);
       } catch (e) {
         console.error(e);
-
-        if (autoRedirectOnQuery) {
-          showError("Lookup failed", e.message || "Could not resolve the EP number from EPO.");
-          return;
-        }
-
         showError("Lookup failed", e.message || "Could not resolve the EP number from EPO.");
       }
     }
 
-    btnGenerateAll.addEventListener("click", generateLinks);
-    btnGenerateOne.addEventListener("click", generateSpecificLink);
+    // ---------------------------
+    // National mode
+    // ---------------------------
+    function nationalSearch() {
+      clearResults();
+
+      const code = (nationalTerritoryInput.value || "").toUpperCase().trim();
+      const number = (nationalNumberInput.value || "").trim();
+      nationalTerritoryInput.value = code;
+
+      if (!code) {
+        showError("Missing territory", "Enter a two-letter territory code first.");
+        return;
+      }
+
+      const rows = [
+        ...(searchLinks[code]?.national || []),
+        ...(searchLinks[code]?.regional || [])
+      ];
+      if (!rows.length) {
+        const hasEp = (searchLinks[code]?.ep || []).length > 0;
+        showError(
+          "No national search configured",
+          "No national patent links configured for <strong>" + escapeHtml(code) + "</strong>." +
+          (hasEp ? " This territory has EP validation links — switch to the European patent tab." : "")
+        );
+        return;
+      }
+
+      resultsCard.classList.add("show");
+      resultsTitle.textContent = "Results — " + code;
+
+      const context = { nationalNumber: number };
+      let firstUrl = null;
+
+      for (const row of rows) {
+        const built = buildSearchLink(row, context);
+        if (built.url && !firstUrl) firstUrl = built.url;
+
+        if (autoRedirectOnQuery) continue;
+
+        if (built.kind === "direct") {
+          addLinkTile({ code, url: built.url, label: tileLabel(row), kind: "direct" });
+        } else if (built.kind === "landing") {
+          addLinkTile({ code, url: built.url, label: tileLabel(row), kind: "landing" });
+        } else if (built.kind === "missing-number") {
+          addLinkTile({ code, url: "Enter a number to build this link", label: tileLabel(row), kind: "disabled" });
+        }
+      }
+
+      if (autoRedirectOnQuery) {
+        if (firstUrl) {
+          window.location.replace(firstUrl);
+        } else {
+          showError("No link available", "Could not build a national link for <strong>" + escapeHtml(code) + "</strong>.");
+        }
+        return;
+      }
+
+      if (!linksGrid.children.length) {
+        addLinkTile({ code, url: "No link configured", kind: "disabled" });
+      }
+
+      if (firstUrl && autoOpenToggle.checked) openLink(firstUrl);
+    }
+
+    // ---------------------------
+    // Landing pages (?DE, ?DEEP, ?EP)
+    // ---------------------------
+    function findLandingUrl(code, preferredType) {
+      const group = searchLinks[code];
+      if (!group) return null;
+      const order = preferredType === "ep"
+        ? ["ep", "national", "regional"]
+        : ["national", "regional", "ep"];
+      for (const type of order) {
+        for (const row of group[type]) {
+          if (row.landingLink) return row.landingLink;
+        }
+      }
+      return null;
+    }
+
+    function openLandingPage(parsed) {
+      const url = findLandingUrl(parsed.territory, parsed.patentType);
+      if (url) {
+        window.location.replace(url);
+        return;
+      }
+      showError(
+        "No search page configured",
+        "No search page is configured for <strong>" + escapeHtml(parsed.territory) + "</strong>. Add a landing link in the admin panel."
+      );
+    }
+
+    // ---------------------------
+    // URL shortcut handling
+    // ---------------------------
+    function prefillInputBoxes() {
+      const rawQuery = getQueryParameter();
+      if (rawQuery === null) return;
+
+      const parsed = parseShortcut(rawQuery);
+      if (!parsed) return;
+
+      switch (parsed.type) {
+        case "ep-all":
+          setMode("ep");
+          epPublicationNumber.value = parsed.number;
+          generateLinks();
+          break;
+
+        case "ep-one":
+          if (!(searchLinks[parsed.territory]?.ep || []).length) {
+            showError("Invalid query", "Territory code not recognised: <strong>" + escapeHtml(parsed.territory) + "</strong>");
+            return;
+          }
+          setMode("ep");
+          autoRedirectOnQuery = true;
+          territoryCodeInput.value = parsed.territory;
+          epPublicationNumber.value = parsed.number;
+          generateSpecificLink();
+          break;
+
+        case "national":
+          if (!searchLinks[parsed.territory]) {
+            showError("Invalid query", "Territory code not recognised: <strong>" + escapeHtml(parsed.territory) + "</strong>");
+            return;
+          }
+          setMode("national");
+          autoRedirectOnQuery = true;
+          nationalTerritoryInput.value = parsed.territory;
+          nationalNumberInput.value = parsed.number;
+          nationalSearch();
+          break;
+
+        case "landing":
+          if (!searchLinks[parsed.territory]) {
+            showError("Invalid query", "Territory code not recognised: <strong>" + escapeHtml(parsed.territory) + "</strong>");
+            return;
+          }
+          openLandingPage(parsed);
+          break;
+
+        default:
+          showError("Invalid query", "Could not understand the shortcut: <strong>" + escapeHtml(parsed.raw || rawQuery) + "</strong>");
+      }
+    }
+
+    // ---------------------------
+    // Events
+    // ---------------------------
+    modeEpBtn.addEventListener("click", () => setMode("ep"));
+    modeNationalBtn.addEventListener("click", () => setMode("national"));
+
+    // Typing an EP number in the national field switches to EP mode.
+    nationalNumberInput.addEventListener("input", () => {
+      const value = nationalNumberInput.value.trim();
+      if (/^EP\d/i.test(value)) {
+        nationalNumberInput.value = "";
+        epPublicationNumber.value = value.toUpperCase();
+        setMode("ep");
+        epPublicationNumber.focus();
+      }
+    });
+
+    btnGenerateAll.addEventListener("click", () => { autoRedirectOnQuery = false; generateLinks(); });
+    btnGenerateOne.addEventListener("click", () => { autoRedirectOnQuery = false; generateSpecificLink(); });
+    btnNationalSearch.addEventListener("click", () => { autoRedirectOnQuery = false; nationalSearch(); });
+
+    epPublicationNumber.addEventListener("keydown", (e) => { if (e.key === "Enter") { autoRedirectOnQuery = false; generateLinks(); } });
+    territoryCodeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { autoRedirectOnQuery = false; generateSpecificLink(); } });
+    nationalNumberInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { autoRedirectOnQuery = false; nationalSearch(); } });
+    nationalTerritoryInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { autoRedirectOnQuery = false; nationalSearch(); } });
+
     btnClear.addEventListener("click", () => {
       epPublicationNumber.value = "";
       territoryCodeInput.value = "";
+      nationalTerritoryInput.value = "";
+      nationalNumberInput.value = "";
       autoRedirectOnQuery = false;
       clearResults();
     });
 
     window.addEventListener("DOMContentLoaded", async () => {
-      const ok = await loadTerritoryLinksFromSupabase();
+      const ok = await loadSearchLinksFromSupabase();
       if (!ok) {
-        showError("Could not load data", "Failed to load territory configuration from Supabase.");
+        showError("Could not load data", "Failed to load search link configuration from Supabase.");
         return;
       }
       prefillInputBoxes();
