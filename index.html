@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>IP Register Search</title>
-  <link rel="stylesheet" href="./styles.css?v=2026-08-21" />
+  <link rel="stylesheet" href="./styles.css?v=2026-08-21b" />
 </head>
 <body>
   <div class="container">
@@ -295,9 +295,10 @@
       const tile = document.createElement("div");
       tile.className = "link-tile" + (isDisabled ? " disabled" : "") + (isLanding ? " landing" : "");
 
+      // One chip per tile: the label wins; "Search page" only marks unlabelled landing tiles.
       const chips = [];
       if (label) chips.push(`<span class="chip">${escapeHtml(label)}</span>`);
-      if (isLanding) chips.push(`<span class="chip landing-chip">Search page</span>`);
+      else if (isLanding) chips.push(`<span class="chip landing-chip">Search page</span>`);
 
       const sub = isDisabled ? escapeHtml(url)
         : isLanding ? "Opens the office's search page"
