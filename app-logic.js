@@ -135,6 +135,7 @@
   //   ?EP3234567        -> { type: "ep-all", number: "EP3234567" }
   //   ?18752904.5       -> { type: "ep-all", number: "18752904.5" }
   //   ?DEEP3234567      -> { type: "ep-one", territory: "DE", number: "EP3234567" }
+  //   ?EPEP3234567      -> { type: "ep-one", territory: "EP", number: "EP3234567" }
   //   ?DE102016123456.7 -> { type: "national", territory: "DE", number: "102016123456.7" }
   //   ?DE               -> { type: "landing", territory: "DE", patentType: "national" }
   //   ?DEEP             -> { type: "landing", territory: "DE", patentType: "ep" }
@@ -149,7 +150,9 @@
       const rest = q.substring(2);
 
       if (territory === "EP") {
-        if (!rest) return { type: "landing", territory: "EP", patentType: "ep" };
+        if (!rest || rest === "EP") return { type: "landing", territory: "EP", patentType: "ep" };
+        // EPEP3234567 -> search the EPO itself (territory EP) for EP3234567
+        if (rest.startsWith("EP")) return { type: "ep-one", territory: "EP", number: rest };
         return { type: "ep-all", number: q };
       }
 

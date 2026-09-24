@@ -91,6 +91,8 @@ test("parseShortcut handles territory-specific queries", () => {
   assert.deepEqual(parseShortcut("DE102016123456.7"), { type: "national", territory: "DE", number: "102016123456.7" });
   assert.deepEqual(parseShortcut("DE"), { type: "landing", territory: "DE", patentType: "national" });
   assert.deepEqual(parseShortcut("DEEP"), { type: "landing", territory: "DE", patentType: "ep" });
+  assert.deepEqual(parseShortcut("EPEP3930647"), { type: "ep-one", territory: "EP", number: "EP3930647" });
+  assert.deepEqual(parseShortcut("EPEP"), { type: "landing", territory: "EP", patentType: "ep" });
 });
 
 test("parseShortcut handles empty and invalid input", () => {
