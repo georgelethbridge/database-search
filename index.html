@@ -361,7 +361,8 @@
 
     function promptOneTap(fallbackToRedirect) {
       google.accounts.id.prompt((notification) => {
-        if (fallbackToRedirect && (notification.isSkippedMoment?.() || notification.isNotDisplayed?.())) {
+        // Only isSkippedMoment survives Google's FedCM migration; display-moment checks are going away.
+        if (fallbackToRedirect && notification.isSkippedMoment?.()) {
           redirectToGoogle(signInAsDifferentUser);
         }
       });
