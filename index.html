@@ -264,12 +264,9 @@
     async function redirectToGoogle(selectAccount = false) {
       if (location.search) storageSet(PENDING_QUERY_KEY, location.search);
       storageSet(AUTH_ATTEMPT_KEY, "1");
-      const queryParams = { hd: "ipcentrum.com" };
-      if (selectAccount) queryParams.prompt = "select_account";
-      await supabaseClient.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: location.origin + location.pathname, queryParams }
-      });
+      const options = { redirectTo: location.origin + location.pathname };
+      if (selectAccount) options.queryParams = { prompt: "select_account" };
+      await supabaseClient.auth.signInWithOAuth({ provider: "google", options });
     }
 
     function restorePendingQuery() {
