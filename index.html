@@ -243,8 +243,52 @@
         return false;
       }
 
-      searchLinks = groupSearchLinks(data ?? []);
+      // RLS returns an empty list (not an error) when the user isn't allowed to read.
+      if (!data || !data.length) return false;
+
+      searchLinks = groupSearchLinks(data);
       return true;
+    }
+
+    // ---------------------------
+    // Auth: reuse the stored Supabase session; if there isn't one, go straight
+    // to Google. The ?QUERY shortcut is stashed so it survives the round trip.
+    // ---------------------------
+    const PENDING_QUERY_KEY = "ipSearch.pendingQuery";
+    const AUTH_ATTEMPT_KEY = "ipSearch.authAttempted";
+
+    function storageGet(key) { try { return sessionStorage.getItem(key); } catch { return null; } }
+    function storageSet(key, value) { try { sessionStorage.setItem(key, value); } catch {} }
+    function storageRemove(key) { try { sessionStorage.removeItem(key); } catch {} }
+
+    async function redirectToGoogle(selectAccount = false) {
+      if (location.search) storageSet(PENDING_QUERY_KEY, location.search);
+      storageSet(AUTH_ATTEMPT_KEY, "1");
+      const queryParams = { hd: "ipcentrum.com" };
+      if (selectAccount) queryParams.prompt = "select_account";
+      await supabaseClient.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: location.origin + location.pathname, queryParams }
+      });
+    }
+
+    function restorePendingQuery() {
+      const pending = storageGet(PENDING_QUERY_KEY);
+      storageRemove(PENDING_QUERY_KEY);
+      if (pending && !location.search) {
+        history.replaceState(null, "", location.pathname + pending);
+      } else if (location.hash.includes("access_token")) {
+        history.replaceState(null, "", location.pathname + location.search);
+      }
+    }
+
+    function showSignInError(email) {
+      const who = email ? "You're signed in as <strong>" + escapeHtml(email) + "</strong>, which doesn't have access." : "You need to sign in with your ipcentrum.com Google account.";
+      showError("Sign-in required", who + ' <button class="btn secondary icon" id="btnSwitchAccount" type="button">Sign in with Google</button>');
+      document.getElementById("btnSwitchAccount").addEventListener("click", async () => {
+        await supabaseClient.auth.signOut();
+        redirectToGoogle(true);
+      });
     }
 
     function openLink(link) {
@@ -719,8 +763,25 @@
     });
 
     window.addEventListener("DOMContentLoaded", async () => {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      const alreadyTried = storageGet(AUTH_ATTEMPT_KEY) === "1";
+
+      if (!session) {
+        // Auto-redirect once per tab; if we're back without a session, ask instead of looping.
+        if (!alreadyTried) { await redirectToGoogle(); return; }
+        storageRemove(AUTH_ATTEMPT_KEY);
+        restorePendingQuery();
+        showSignInError(null);
+        return;
+      }
+
+      storageRemove(AUTH_ATTEMPT_KEY);
+      restorePendingQuery();
+
       const ok = await loadSearchLinksFromSupabase();
       if (!ok) {
+        const email = session.user?.email || "";
+        if (!/@ipcentrum\.com$/i.test(email)) { showSignInError(email); return; }
         showError("Could not load data", "Failed to load search link configuration from Supabase.");
         return;
       }
